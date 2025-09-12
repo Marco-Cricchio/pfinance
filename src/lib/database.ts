@@ -73,6 +73,28 @@ try {
     CREATE INDEX IF NOT EXISTS idx_categories_name ON categories(name);
     CREATE INDEX IF NOT EXISTS idx_category_rules_priority ON category_rules(priority, enabled);
     CREATE INDEX IF NOT EXISTS idx_category_rules_category ON category_rules(category_id);
+    
+    CREATE TABLE IF NOT EXISTS ai_chat_sessions (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL DEFAULT 'default_user',
+      title TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      last_activity DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    
+    CREATE TABLE IF NOT EXISTS ai_chat_messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id TEXT NOT NULL,
+      role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'system')),
+      content TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (session_id) REFERENCES ai_chat_sessions(id) ON DELETE CASCADE
+    );
+    
+    CREATE INDEX IF NOT EXISTS idx_chat_sessions_user_id ON ai_chat_sessions(user_id);
+    CREATE INDEX IF NOT EXISTS idx_chat_sessions_last_activity ON ai_chat_sessions(last_activity DESC);
+    CREATE INDEX IF NOT EXISTS idx_chat_messages_session_id ON ai_chat_messages(session_id);
+    CREATE INDEX IF NOT EXISTS idx_chat_messages_created_at ON ai_chat_messages(created_at DESC);
   `);
   
   // Migration logic for existing databases
@@ -551,6 +573,182 @@ export function removeManualCategory(transactionId: string): boolean {
   } catch (error) {
     console.error('Error removing manual category:', error);
     return false;
+  }
+}
+
+// Chat management functions
+export interface ChatMessage {
+  id: number;
+  session_id: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  created_at: string;
+}
+
+export interface ChatSession {
+  id: string;
+  user_id: string;
+  title?: string;
+  created_at: string;
+  last_activity: string;
+}
+
+// Generate a unique session ID
+function generateSessionId(): string {
+  return `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+}
+
+// Get or create default chat session for a user
+export function getOrCreateChatSession(userId: string = 'default_user'): ChatSession {
+  try {
+    // Try to get the most recent session for the user
+    const existingSession = db.prepare(`
+      SELECT * FROM ai_chat_sessions 
+      WHERE user_id = ? 
+      ORDER BY last_activity DESC 
+      LIMIT 1
+    `).get(userId) as ChatSession | undefined;
+    
+    if (existingSession) {
+      return existingSession;
+    }
+    
+    // Create a new session if none exists
+    const sessionId = generateSessionId();
+    const stmt = db.prepare(`
+      INSERT INTO ai_chat_sessions (id, user_id, title)
+      VALUES (?, ?, ?)
+    `);
+    
+    stmt.run(sessionId, userId, 'Nuova Conversazione');
+    
+    // Return the newly created session
+    return {
+      id: sessionId,
+      user_id: userId,
+      title: 'Nuova Conversazione',
+      created_at: new Date().toISOString(),
+      last_activity: new Date().toISOString()
+    };
+  } catch (error) {
+    console.error('Error getting or creating chat session:', error);
+    // Return a fallback session
+    return {
+      id: 'fallback_session',
+      user_id: userId,
+      title: 'Conversazione Fallback',
+      created_at: new Date().toISOString(),
+      last_activity: new Date().toISOString()
+    };
+  }
+}
+
+// Insert a new chat message
+export function insertChatMessage(
+  sessionId: string, 
+  role: 'user' | 'assistant' | 'system', 
+  content: string
+): number | null {
+  try {
+    const stmt = db.prepare(`
+      INSERT INTO ai_chat_messages (session_id, role, content)
+      VALUES (?, ?, ?)
+    `);
+    
+    const result = stmt.run(sessionId, role, content);
+    
+    // Update session's last activity
+    const updateSession = db.prepare(`
+      UPDATE ai_chat_sessions 
+      SET last_activity = CURRENT_TIMESTAMP 
+      WHERE id = ?
+    `);
+    updateSession.run(sessionId);
+    
+    return result.lastInsertRowid as number;
+  } catch (error) {
+    console.error('Error inserting chat message:', error);
+    return null;
+  }
+}
+
+// Get chat messages for a session
+export function getChatMessages(
+  sessionId: string, 
+  limit: number = 50
+): ChatMessage[] {
+  try {
+    const stmt = db.prepare(`
+      SELECT * FROM ai_chat_messages 
+      WHERE session_id = ? 
+      ORDER BY created_at ASC 
+      LIMIT ?
+    `);
+    
+    return stmt.all(sessionId, limit) as ChatMessage[];
+  } catch (error) {
+    console.error('Error getting chat messages:', error);
+    return [];
+  }
+}
+
+// Get conversation history for a user (all messages from latest session)
+export function getConversationHistory(userId: string = 'default_user'): ChatMessage[] {
+  try {
+    const session = getOrCreateChatSession(userId);
+    return getChatMessages(session.id);
+  } catch (error) {
+    console.error('Error getting conversation history:', error);
+    return [];
+  }
+}
+
+// Clear all messages from a session (for reset functionality)
+export function clearChatSession(sessionId: string): boolean {
+  try {
+    const stmt = db.prepare('DELETE FROM ai_chat_messages WHERE session_id = ?');
+    const result = stmt.run(sessionId);
+    
+    // Update session activity
+    const updateSession = db.prepare(`
+      UPDATE ai_chat_sessions 
+      SET last_activity = CURRENT_TIMESTAMP, title = 'Nuova Conversazione' 
+      WHERE id = ?
+    `);
+    updateSession.run(sessionId);
+    
+    return result.changes > 0;
+  } catch (error) {
+    console.error('Error clearing chat session:', error);
+    return false;
+  }
+}
+
+// Initialize welcome message for new users
+export function initializeWelcomeMessage(sessionId: string): void {
+  try {
+    // Check if session already has messages
+    const existingMessages = getChatMessages(sessionId, 1);
+    if (existingMessages.length > 0) {
+      return; // Session already has messages, don't add welcome
+    }
+    
+    const welcomeMessage = `Ciao! Sono il tuo consulente finanziario personale AI. 🤖💰
+
+Ho accesso ai tuoi dati finanziari e posso aiutarti con:
+
+• Analisi delle tue spese e entrate
+• Suggerimenti per ottimizzare il budget
+• Identificazione di pattern di spesa
+• Consigli personalizzati per il risparmio
+• Risposte a domande specifiche sui tuoi movimenti
+
+Come posso aiutarti oggi? Puoi farmi qualsiasi domanda sui tuoi dati finanziari!`;
+    
+    insertChatMessage(sessionId, 'assistant', welcomeMessage);
+    console.log('✅ Welcome message initialized for session:', sessionId);
+  } catch (error) {
+    console.error('Error initializing welcome message:', error);
   }
 }
 

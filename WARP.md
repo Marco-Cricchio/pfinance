@@ -51,16 +51,19 @@ src/
 │   │   ├── parse-pdf/  # PDF transaction parsing
 │   │   ├── parse-xlsx/ # Excel file parsing  
 │   │   ├── transactions/ # Transaction CRUD operations
-│   │   └── recategorize/ # AI recategorization endpoint
+│   │   ├── recategorize/ # AI recategorization endpoint
+│   │   └── ai-chat/    # Interactive AI chat with streaming support
 ├── components/         # React UI components
 │   ├── Dashboard.tsx   # Main financial dashboard
 │   ├── AdvancedDashboard.tsx # Advanced analytics view
-│   └── AIInsights.tsx  # AI-generated financial insights
+│   ├── AIInsights.tsx  # AI-generated financial insights (legacy)
+│   └── ChatBox.tsx     # Interactive AI financial advisor chat
 ├── lib/               # Core business logic
 │   ├── database.ts    # SQLite operations and schema
-│   ├── ai.ts         # OpenRouter AI integration
+│   ├── ai.ts         # OpenRouter AI integration (legacy insights)
+│   ├── aiChat.ts     # AI chat completion with streaming support
 │   ├── parsers.ts    # Document parsing utilities
-│   └── categorizer.ts # Transaction categorization engine
+└── categorizer.ts # Transaction categorization engine
 ├── types/            # TypeScript definitions
 └── hooks/            # Custom React hooks for data analysis
 ```
@@ -83,6 +86,14 @@ The application uses a multi-tiered AI approach:
 - **Primary**: OpenRouter API with model fallbacks (`deepseek/deepseek-r1-0528:free`, `google/gemini-2.0-flash-exp:free`)
 - **Fallback**: Rule-based categorization using pattern matching
 - **Caching**: Manual category overrides stored in database to prevent re-categorization
+- **Chat Interface**: Interactive financial advisor with streaming responses and conversation history
+
+### AI Chat Workflow
+1. **Session Management**: Auto-create chat sessions with welcome messages
+2. **Context Injection**: AI receives real-time financial data (income, expenses, categories)
+3. **Streaming Response**: Server-Sent Events provide real-time response chunks
+4. **Conversation Persistence**: All messages stored in SQLite for continuous context
+5. **Real Amounts**: Chat sempre mostra importi reali per consigli accurati
 
 ### Category Management
 - **Auto-categorization**: AI assigns categories based on transaction descriptions
@@ -100,6 +111,9 @@ NEXT_PUBLIC_OPENROUTER_API_KEY=your_openrouter_api_key_here
 
 # Optional: Password for showing real amounts vs obfuscated
 SHOW_AMOUNTS=your_password_here
+
+# Optional: Chat rate limiting (messages per minute per user)
+CHAT_RATE_LIMIT=10
 ```
 
 ### Development Setup
@@ -151,6 +165,25 @@ CREATE TABLE category_rules (
   match_type TEXT CHECK (match_type IN ('contains', 'startsWith', 'endsWith')),
   priority INTEGER DEFAULT 0,
   enabled BOOLEAN DEFAULT 1
+);
+
+-- AI Chat sessions
+CREATE TABLE ai_chat_sessions (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL DEFAULT 'default_user',
+  title TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  last_activity DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- AI Chat messages with streaming support
+CREATE TABLE ai_chat_messages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT NOT NULL,
+  role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'system')),
+  content TEXT NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (session_id) REFERENCES ai_chat_sessions(id) ON DELETE CASCADE
 );
 ```
 
