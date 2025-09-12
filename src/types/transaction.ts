@@ -7,6 +7,8 @@ export interface Transaction {
   category?: string;
   type: 'income' | 'expense';
   balance?: number;
+  manual_category_id?: number | null;
+  is_manual_override?: boolean;
 }
 
 export interface UploadedFile {

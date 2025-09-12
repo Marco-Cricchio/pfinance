@@ -26,8 +26,34 @@ try {
       category TEXT,
       type TEXT NOT NULL CHECK (type IN ('income', 'expense')),
       hash TEXT NOT NULL UNIQUE,
+      manual_category_id INTEGER,
+      is_manual_override BOOLEAN DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (manual_category_id) REFERENCES categories(id)
+    );
+    
+    CREATE TABLE IF NOT EXISTS categories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT UNIQUE NOT NULL,
+      type TEXT CHECK (type IN ('income', 'expense', 'both')) DEFAULT 'both',
+      color TEXT DEFAULT '#8884d8',
+      is_active BOOLEAN DEFAULT 1,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    
+    CREATE TABLE IF NOT EXISTS category_rules (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      category_id INTEGER NOT NULL,
+      pattern TEXT NOT NULL,
+      match_type TEXT CHECK (match_type IN ('contains', 'startsWith', 'endsWith')) DEFAULT 'contains',
+      priority INTEGER DEFAULT 0,
+      enabled BOOLEAN DEFAULT 1,
+      notes TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
     );
     
     CREATE TABLE IF NOT EXISTS account_balance (
@@ -43,9 +69,20 @@ try {
     CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category);
     CREATE INDEX IF NOT EXISTS idx_transactions_type ON transactions(type);
     CREATE INDEX IF NOT EXISTS idx_transactions_hash ON transactions(hash);
+    CREATE INDEX IF NOT EXISTS idx_transactions_manual_category ON transactions(manual_category_id);
+    CREATE INDEX IF NOT EXISTS idx_categories_name ON categories(name);
+    CREATE INDEX IF NOT EXISTS idx_category_rules_priority ON category_rules(priority, enabled);
+    CREATE INDEX IF NOT EXISTS idx_category_rules_category ON category_rules(category_id);
   `);
   
   console.log('✅ Database SQLite inizializzato correttamente');
+  
+  // Initialize default categories and rules
+  import('./categorizer').then(({ initializeDefaultCategories }) => {
+    initializeDefaultCategories();
+  }).catch(error => {
+    console.error('Error importing categorizer:', error);
+  });
 } catch (error) {
   console.error('❌ Errore inizializzazione database:', error);
 }
@@ -283,6 +320,197 @@ export function calculateAccountBalance(): number {
   } catch (error) {
     console.error('Errore calcolo saldo contabile:', error);
     return 1000.00;
+  }
+}
+
+// Category management functions
+export function getAllCategories(): any[] {
+  try {
+    const stmt = db.prepare(`
+      SELECT * FROM categories 
+      WHERE is_active = 1 
+      ORDER BY name ASC
+    `);
+    return stmt.all();
+  } catch (error) {
+    console.error('Error fetching categories:', error);
+    return [];
+  }
+}
+
+export function createCategory(name: string, type: string = 'both', color: string = '#8884d8'): number | null {
+  try {
+    const stmt = db.prepare(`
+      INSERT INTO categories (name, type, color)
+      VALUES (?, ?, ?)
+    `);
+    const result = stmt.run(name, type, color);
+    return result.lastInsertRowid as number;
+  } catch (error) {
+    console.error('Error creating category:', error);
+    return null;
+  }
+}
+
+export function updateCategory(id: number, updates: { name?: string; type?: string; color?: string }): boolean {
+  try {
+    const fields = [];
+    const values = [];
+    
+    if (updates.name) {
+      fields.push('name = ?');
+      values.push(updates.name);
+    }
+    if (updates.type) {
+      fields.push('type = ?');
+      values.push(updates.type);
+    }
+    if (updates.color) {
+      fields.push('color = ?');
+      values.push(updates.color);
+    }
+    
+    if (fields.length === 0) return false;
+    
+    fields.push('updated_at = CURRENT_TIMESTAMP');
+    values.push(id);
+    
+    const stmt = db.prepare(`
+      UPDATE categories 
+      SET ${fields.join(', ')} 
+      WHERE id = ?
+    `);
+    const result = stmt.run(...values);
+    return result.changes > 0;
+  } catch (error) {
+    console.error('Error updating category:', error);
+    return false;
+  }
+}
+
+export function deleteCategory(id: number): boolean {
+  try {
+    const stmt = db.prepare('UPDATE categories SET is_active = 0 WHERE id = ?');
+    const result = stmt.run(id);
+    return result.changes > 0;
+  } catch (error) {
+    console.error('Error deleting category:', error);
+    return false;
+  }
+}
+
+// Category rules management
+export function getAllCategoryRules(): any[] {
+  try {
+    const stmt = db.prepare(`
+      SELECT 
+        r.*,
+        c.name as category_name,
+        c.color as category_color
+      FROM category_rules r
+      JOIN categories c ON r.category_id = c.id
+      ORDER BY r.priority ASC, r.id ASC
+    `);
+    return stmt.all();
+  } catch (error) {
+    console.error('Error fetching category rules:', error);
+    return [];
+  }
+}
+
+export function createCategoryRule(categoryId: number, pattern: string, matchType: string = 'contains', priority: number = 0): number | null {
+  try {
+    const stmt = db.prepare(`
+      INSERT INTO category_rules (category_id, pattern, match_type, priority)
+      VALUES (?, ?, ?, ?)
+    `);
+    const result = stmt.run(categoryId, pattern, matchType, priority);
+    return result.lastInsertRowid as number;
+  } catch (error) {
+    console.error('Error creating category rule:', error);
+    return null;
+  }
+}
+
+export function updateCategoryRule(id: number, updates: { pattern?: string; matchType?: string; priority?: number; enabled?: boolean }): boolean {
+  try {
+    const fields = [];
+    const values = [];
+    
+    if (updates.pattern) {
+      fields.push('pattern = ?');
+      values.push(updates.pattern);
+    }
+    if (updates.matchType) {
+      fields.push('match_type = ?');
+      values.push(updates.matchType);
+    }
+    if (updates.priority !== undefined) {
+      fields.push('priority = ?');
+      values.push(updates.priority);
+    }
+    if (updates.enabled !== undefined) {
+      fields.push('enabled = ?');
+      values.push(updates.enabled ? 1 : 0);
+    }
+    
+    if (fields.length === 0) return false;
+    
+    fields.push('updated_at = CURRENT_TIMESTAMP');
+    values.push(id);
+    
+    const stmt = db.prepare(`
+      UPDATE category_rules 
+      SET ${fields.join(', ')} 
+      WHERE id = ?
+    `);
+    const result = stmt.run(...values);
+    return result.changes > 0;
+  } catch (error) {
+    console.error('Error updating category rule:', error);
+    return false;
+  }
+}
+
+export function deleteCategoryRule(id: number): boolean {
+  try {
+    const stmt = db.prepare('DELETE FROM category_rules WHERE id = ?');
+    const result = stmt.run(id);
+    return result.changes > 0;
+  } catch (error) {
+    console.error('Error deleting category rule:', error);
+    return false;
+  }
+}
+
+// Manual override functions
+export function setManualCategory(transactionId: string, categoryId: number): boolean {
+  try {
+    const stmt = db.prepare(`
+      UPDATE transactions 
+      SET manual_category_id = ?, is_manual_override = 1, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `);
+    const result = stmt.run(categoryId, transactionId);
+    return result.changes > 0;
+  } catch (error) {
+    console.error('Error setting manual category:', error);
+    return false;
+  }
+}
+
+export function removeManualCategory(transactionId: string): boolean {
+  try {
+    const stmt = db.prepare(`
+      UPDATE transactions 
+      SET manual_category_id = NULL, is_manual_override = 0, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `);
+    const result = stmt.run(transactionId);
+    return result.changes > 0;
+  } catch (error) {
+    console.error('Error removing manual category:', error);
+    return false;
   }
 }
 

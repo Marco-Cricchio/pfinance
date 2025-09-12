@@ -93,6 +93,12 @@ export default function DashboardLayout({
       icon: Lightbulb,
       description: 'Personalized recommendations'
     },
+    {
+      href: '/dashboard/categories',
+      label: 'Categories',
+      icon: Tag,
+      description: 'Manage transaction categories'
+    },
   ];
 
   return (
@@ -210,12 +216,14 @@ export default function DashboardLayout({
                     {pathname === '/dashboard/advanced' && 'Advanced Analytics'}
                     {pathname === '/dashboard/intelligent' && 'Intelligent Analysis'}
                     {pathname === '/dashboard/insights' && 'AI Insights'}
+                    {pathname === '/dashboard/categories' && 'Categories Management'}
                   </h2>
                   <p className="text-xs lg:text-sm text-muted-foreground sm:block">
                     {pathname === '/dashboard/overview' && 'General financial overview and statistics'}
                     {pathname === '/dashboard/advanced' && 'Deep dive charts and advanced analytics'}
                     {pathname === '/dashboard/intelligent' && 'AI-powered pattern recognition and analysis'}
                     {pathname === '/dashboard/insights' && 'Personalized recommendations and actionable insights'}
+                    {pathname === '/dashboard/categories' && 'Manage transaction categories and rules'}
                   </p>
                 </div>
               </div>
