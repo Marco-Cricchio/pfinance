@@ -123,6 +123,33 @@ export default function CategoriesPage() {
     clearSelection(); // Clear selection when changing pages
   };
 
+  // Helper function for category type badge styling
+  const getCategoryTypeBadge = (type: string) => {
+    if (type === 'income') {
+      return (
+        <Badge 
+          className="bg-green-600 hover:bg-green-700 text-white border-green-600"
+        >
+          Entrata
+        </Badge>
+      );
+    } else if (type === 'expense') {
+      return (
+        <Badge 
+          className="bg-red-600 hover:bg-red-700 text-white border-red-600"
+        >
+          Spesa
+        </Badge>
+      );
+    } else {
+      return (
+        <Badge variant="secondary">
+          Entrambi
+        </Badge>
+      );
+    }
+  };
+
   // Selection management functions
   const handleSelectItem = (index: number) => {
     const newSelected = new Set(selectedItems);
@@ -569,9 +596,7 @@ export default function CategoriesPage() {
                               style={{ backgroundColor: category.color }}
                             />
                             <span className="font-medium">{category.name}</span>
-                            <Badge variant={category.type === 'income' ? 'default' : 'secondary'}>
-                              {category.type === 'income' ? 'Entrata' : category.type === 'expense' ? 'Spesa' : 'Entrambi'}
-                            </Badge>
+                            {getCategoryTypeBadge(category.type)}
                           </div>
                           <div className="flex items-center space-x-2">
                             <Button size="sm" variant="outline" onClick={() => setEditingCategory(category)}>
