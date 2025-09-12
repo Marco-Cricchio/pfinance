@@ -31,10 +31,9 @@ export async function POST(request: NextRequest) {
 
 export async function GET() {
   try {
-    // Get sample descriptions from recent transactions
+    // Get all transaction descriptions for preview
     const transactions = getAllTransactions();
     const sampleDescriptions = transactions
-      .slice(0, 50)
       .map(t => t.description);
     
     const preview = previewCategorization(sampleDescriptions);

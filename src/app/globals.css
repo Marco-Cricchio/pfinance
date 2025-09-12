@@ -236,6 +236,11 @@ body {
   color: var(--secondary);
 }
 
+/* Custom background color using LCH */
+.bg-custom-pattern {
+  background-color: lch(16 14.74 267.67);
+}
+
 /* Responsive Design */
 @media (max-width: 1023px) {
   .sidebar {

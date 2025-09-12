@@ -9,6 +9,7 @@ import { Select } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs } from '@/components/ui/tabs';
+import { Pagination } from '@/components/ui/pagination';
 import { Plus, Edit2, Trash2, Save, X, Eye } from 'lucide-react';
 
 interface Category {
@@ -52,6 +53,10 @@ export default function CategoriesPage() {
   const [success, setSuccess] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 25;
+  
   // Form states
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [editingRule, setEditingRule] = useState<CategoryRule | null>(null);
@@ -68,6 +73,8 @@ export default function CategoriesPage() {
     } else {
       setFilteredPreview(preview.filter(item => item.category === categoryFilter));
     }
+    // Reset page when filter changes
+    setCurrentPage(1);
   }, [preview, categoryFilter]);
 
   useEffect(() => {
@@ -83,6 +90,17 @@ export default function CategoriesPage() {
       return () => clearTimeout(timer);
     }
   }, [error]);
+
+  // Pagination calculations
+  const totalItems = filteredPreview.length;
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedPreview = filteredPreview.slice(startIndex, endIndex);
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+  };
 
   const loadData = async () => {
     try {
@@ -589,7 +607,7 @@ export default function CategoriesPage() {
                               style={{ backgroundColor: rule.category_color }}
                             />
                             <Badge variant="outline">{rule.category_name}</Badge>
-                            <code className="bg-blue-100 px-2 py-1 rounded text-sm">{rule.pattern}</code>
+                            <code className="bg-custom-pattern px-2 py-1 rounded text-sm">{rule.pattern}</code>
                             <Badge variant={rule.match_type === 'contains' ? 'default' : 'secondary'}>
                               {rule.match_type}
                             </Badge>
@@ -621,7 +639,9 @@ export default function CategoriesPage() {
           <Card>
             <CardHeader>
               <CardTitle>Anteprima Categorizzazione</CardTitle>
-              <CardDescription>Fino a 50 esempi di categorizzazione</CardDescription>
+              <CardDescription>
+                {totalItems > 0 ? `${totalItems} transazioni trovate` : 'Nessuna transazione disponibile'}
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="mb-4">
@@ -639,8 +659,8 @@ export default function CategoriesPage() {
                 </select>
               </div>
               <div className="space-y-2">
-                {filteredPreview.map((item, index) => (
-                  <div key={index} className="flex items-center justify-between p-3 border rounded-lg">
+                {paginatedPreview.map((item, index) => (
+                  <div key={startIndex + index} className="flex items-center justify-between p-3 border rounded-lg">
                     <code className="text-sm flex-1">{item.description}</code>
                     <Badge 
                       style={{ 
@@ -658,6 +678,15 @@ export default function CategoriesPage() {
                   </div>
                 )}
               </div>
+              
+              {/* Pagination */}
+              <Pagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                totalItems={totalItems}
+                itemsPerPage={itemsPerPage}
+                onPageChange={handlePageChange}
+              />
             </CardContent>
           </Card>
         )}

@@ -75,6 +75,46 @@ try {
     CREATE INDEX IF NOT EXISTS idx_category_rules_category ON category_rules(category_id);
   `);
   
+  // Migration logic for existing databases
+  try {
+    // Check if manual_category_id column exists, if not add it
+    const tableInfo = db.prepare("PRAGMA table_info(transactions)").all() as Array<{name: string}>;
+    const hasManualCategoryId = tableInfo.some(col => col.name === 'manual_category_id');
+    const hasIsManualOverride = tableInfo.some(col => col.name === 'is_manual_override');
+    const hasCreatedAt = tableInfo.some(col => col.name === 'created_at');
+    const hasUpdatedAt = tableInfo.some(col => col.name === 'updated_at');
+    
+    if (!hasManualCategoryId) {
+      console.log('🔧 Adding manual_category_id column...');
+      db.exec('ALTER TABLE transactions ADD COLUMN manual_category_id INTEGER');
+    }
+    
+    if (!hasIsManualOverride) {
+      console.log('🔧 Adding is_manual_override column...');
+      db.exec('ALTER TABLE transactions ADD COLUMN is_manual_override BOOLEAN DEFAULT 0');
+    }
+    
+    if (!hasCreatedAt) {
+      console.log('🔧 Adding created_at column...');
+      db.exec('ALTER TABLE transactions ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP');
+    }
+    
+    if (!hasUpdatedAt) {
+      console.log('🔧 Adding updated_at column...');
+      db.exec('ALTER TABLE transactions ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP');
+    }
+    
+    console.log('✅ Database migration completed successfully');
+    
+    // Create missing indexes after migration
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_transactions_manual_category ON transactions(manual_category_id);
+    `);
+    
+  } catch (migrationError) {
+    console.warn('⚠️ Migration warning:', migrationError);
+  }
+  
   console.log('✅ Database SQLite inizializzato correttamente');
   
   // Initialize default categories and rules
