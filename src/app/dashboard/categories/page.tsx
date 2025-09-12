@@ -442,8 +442,8 @@ export default function CategoriesPage() {
               onClick={() => setActiveTab('categories')}
               className={`py-2 px-1 border-b-2 font-medium text-sm ${
                 activeTab === 'categories'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
               }`}
             >
               Categorie
@@ -452,8 +452,8 @@ export default function CategoriesPage() {
               onClick={() => setActiveTab('rules')}
               className={`py-2 px-1 border-b-2 font-medium text-sm ${
                 activeTab === 'rules'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
               }`}
             >
               Regole
@@ -462,8 +462,8 @@ export default function CategoriesPage() {
               onClick={() => setActiveTab('preview')}
               className={`py-2 px-1 border-b-2 font-medium text-sm ${
                 activeTab === 'preview'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
               }`}
             >
               Anteprima
@@ -496,7 +496,7 @@ export default function CategoriesPage() {
                       id="category-type"
                       value={newCategory.type}
                       onChange={(e) => setNewCategory({...newCategory, type: e.target.value as any})}
-                      className="w-full p-2 border border-gray-300 rounded-md"
+                      className="w-full p-2 border bg-background rounded-md"
                     >
                       <option value="expense">Spesa</option>
                       <option value="income">Entrata</option>
@@ -542,7 +542,7 @@ export default function CategoriesPage() {
                           <select
                             value={editingCategory.type}
                             onChange={(e) => setEditingCategory({...editingCategory, type: e.target.value as any})}
-                            className="p-2 border border-gray-300 rounded-md"
+                            className="p-2 border bg-background rounded-md"
                           >
                             <option value="expense">Spesa</option>
                             <option value="income">Entrata</option>
@@ -607,7 +607,7 @@ export default function CategoriesPage() {
                       id="rule-category"
                       value={newRule.categoryId}
                       onChange={(e) => setNewRule({...newRule, categoryId: e.target.value})}
-                      className="w-full p-2 border border-gray-300 rounded-md"
+                      className="w-full p-2 border bg-background rounded-md"
                     >
                       <option value="">Seleziona categoria</option>
                       {categories.map((cat) => (
@@ -630,7 +630,7 @@ export default function CategoriesPage() {
                       id="rule-match-type"
                       value={newRule.matchType}
                       onChange={(e) => setNewRule({...newRule, matchType: e.target.value as any})}
-                      className="w-full p-2 border border-gray-300 rounded-md"
+                      className="w-full p-2 border bg-background rounded-md"
                     >
                       <option value="contains">Contiene</option>
                       <option value="startsWith">Inizia con</option>
@@ -683,7 +683,7 @@ export default function CategoriesPage() {
                           <select
                             value={editingRule.match_type}
                             onChange={(e) => setEditingRule({...editingRule, match_type: e.target.value as any})}
-                            className="p-2 border border-gray-300 rounded-md"
+                            className="p-2 border bg-background rounded-md"
                           >
                             <option value="contains">Contiene</option>
                             <option value="startsWith">Inizia con</option>
@@ -723,7 +723,7 @@ export default function CategoriesPage() {
                             <Badge variant={rule.match_type === 'contains' ? 'default' : 'secondary'}>
                               {rule.match_type}
                             </Badge>
-                            <span className="text-sm text-gray-500">Priorità: {rule.priority}</span>
+                            <span className="text-sm text-muted-foreground">Priorità: {rule.priority}</span>
                             <Badge variant={rule.enabled ? 'default' : 'destructive'}>
                               {rule.enabled ? 'Attiva' : 'Disattivata'}
                             </Badge>
@@ -763,7 +763,7 @@ export default function CategoriesPage() {
                     id="category-filter"
                     value={categoryFilter}
                     onChange={(e) => setCategoryFilter(e.target.value)}
-                    className="w-full p-2 border border-gray-300 rounded-md mt-1"
+                    className="w-full p-2 border bg-background rounded-md mt-1"
                   >
                     <option value="all">Tutte le categorie</option>
                     {categories.map((cat) => (
@@ -774,7 +774,7 @@ export default function CategoriesPage() {
                 <div>
                   <Label htmlFor="search-filter">Cerca nelle descrizioni</Label>
                   <div className="relative mt-1">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
                     <Input
                       id="search-filter"
                       type="text"
@@ -790,7 +790,7 @@ export default function CategoriesPage() {
               {/* Active Filters Display */}
               {(searchTerm.trim() || categoryFilter !== 'all') && (
                 <div className="mb-4 flex flex-wrap items-center gap-2">
-                  <span className="text-sm text-gray-600">Filtri attivi:</span>
+                  <span className="text-sm text-muted-foreground">Filtri attivi:</span>
                   {categoryFilter !== 'all' && (
                     <Badge variant="outline" className="flex items-center gap-1">
                       Categoria: {categoryFilter}
@@ -825,14 +825,14 @@ export default function CategoriesPage() {
               
               {/* Bulk Actions Interface */}
               {paginatedPreview.length > 0 && (
-                <div className="mb-4 p-4 bg-gray-50 rounded-lg border">
+                <div className="mb-4 p-4 bg-muted rounded-lg border">
                   <div className="flex flex-wrap items-center gap-4">
                     <div className="flex items-center gap-2">
                       <input
                         type="checkbox"
                         checked={selectedItems.size === paginatedPreview.length && paginatedPreview.length > 0}
                         onChange={handleSelectAll}
-                        className="rounded border-gray-300"
+                        className="rounded border"
                       />
                       <Label className="text-sm font-medium">
                         {selectedItems.size === paginatedPreview.length && paginatedPreview.length > 0
@@ -850,7 +850,7 @@ export default function CategoriesPage() {
                         <select
                           value={bulkCategoryId}
                           onChange={(e) => setBulkCategoryId(e.target.value)}
-                          className="p-2 border border-gray-300 rounded-md text-sm"
+                          className="p-2 border bg-background rounded-md text-sm"
                         >
                           <option value="">Seleziona categoria</option>
                           {categories.map((cat) => (
@@ -881,13 +881,13 @@ export default function CategoriesPage() {
                 {paginatedPreview.map((item, index) => {
                   const itemIndex = startIndex + index;
                   return (
-                    <div key={itemIndex} className="flex items-center gap-3 p-3 border rounded-lg hover:bg-gray-50">
+                    <div key={itemIndex} className="flex items-center gap-3 p-3 border rounded-lg hover:bg-muted/50 transition-colors">
                       {/* Selection Checkbox */}
                       <input
                         type="checkbox"
                         checked={selectedItems.has(itemIndex)}
                         onChange={() => handleSelectItem(itemIndex)}
-                        className="rounded border-gray-300"
+                        className="rounded border"
                       />
                       
                       {/* Transaction Description */}
@@ -913,7 +913,7 @@ export default function CategoriesPage() {
                               handleSingleCategoryUpdate(item.description, categoryId);
                             }
                           }}
-                          className="text-xs p-1 border border-gray-300 rounded text-gray-600 bg-white hover:bg-gray-50"
+                          className="text-xs p-1 border rounded text-muted-foreground bg-background hover:bg-muted/50 transition-colors"
                           defaultValue=""
                         >
                           <option value="">Cambia</option>
@@ -926,7 +926,7 @@ export default function CategoriesPage() {
                   );
                 })}
                 {filteredPreview.length === 0 && (
-                  <div className="text-center text-gray-500 py-4">
+                  <div className="text-center text-muted-foreground py-4">
                     {searchTerm.trim() || categoryFilter !== 'all' 
                       ? 'Nessuna transazione trovata per i filtri selezionati'
                       : 'Nessuna transazione disponibile'
