@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs } from '@/components/ui/tabs';
 import { Pagination } from '@/components/ui/pagination';
-import { Plus, Edit2, Trash2, Save, X, Eye, Search } from 'lucide-react';
+import { Plus, Edit2, Trash2, Save, X, Eye, Search, Check, ChevronDown } from 'lucide-react';
 
 interface Category {
   id: number;
@@ -37,6 +37,7 @@ interface CategoryRule {
 }
 
 interface PreviewItem {
+  id?: string;
   description: string;
   category: string;
   color?: string;
@@ -53,6 +54,11 @@ export default function CategoriesPage() {
   const [success, setSuccess] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
+  
+  // Selection states for bulk operations
+  const [selectedItems, setSelectedItems] = useState<Set<number>>(new Set());
+  const [bulkCategoryId, setBulkCategoryId] = useState('');
+  const [showBulkActions, setShowBulkActions] = useState(false);
   
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
@@ -86,8 +92,9 @@ export default function CategoriesPage() {
     }
     
     setFilteredPreview(filtered);
-    // Reset page when filters change
+    // Reset page and clear selection when filters change
     setCurrentPage(1);
+    clearSelection();
   }, [preview, categoryFilter, searchTerm]);
 
   useEffect(() => {
@@ -113,6 +120,98 @@ export default function CategoriesPage() {
 
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
+    clearSelection(); // Clear selection when changing pages
+  };
+
+  // Selection management functions
+  const handleSelectItem = (index: number) => {
+    const newSelected = new Set(selectedItems);
+    if (newSelected.has(index)) {
+      newSelected.delete(index);
+    } else {
+      newSelected.add(index);
+    }
+    setSelectedItems(newSelected);
+    setShowBulkActions(newSelected.size > 0);
+  };
+
+  const handleSelectAll = () => {
+    if (selectedItems.size === paginatedPreview.length) {
+      // Deselect all
+      setSelectedItems(new Set());
+      setShowBulkActions(false);
+    } else {
+      // Select all on current page
+      const newSelected = new Set<number>();
+      paginatedPreview.forEach((_, index) => newSelected.add(startIndex + index));
+      setSelectedItems(newSelected);
+      setShowBulkActions(true);
+    }
+  };
+
+  const clearSelection = () => {
+    setSelectedItems(new Set());
+    setShowBulkActions(false);
+  };
+
+  // Single transaction update function
+  const handleSingleCategoryUpdate = async (description: string, categoryId: number) => {
+    try {
+      const response = await fetch('/api/transactions/categorize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          description,
+          categoryId
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setSuccess(`Categoria aggiornata per ${data.updatedCount} transazione/i`);
+        loadData(); // Reload to get updated categories
+      } else {
+        const data = await response.json();
+        setError(data.error || 'Errore durante l\'aggiornamento');
+      }
+    } catch (error) {
+      setError('Errore di rete durante l\'aggiornamento');
+    }
+  };
+
+  // Bulk update function
+  const handleBulkCategoryUpdate = async () => {
+    if (!bulkCategoryId || selectedItems.size === 0) {
+      setError('Seleziona una categoria e almeno una transazione');
+      return;
+    }
+
+    try {
+      const selectedDescriptions = Array.from(selectedItems).map(index => 
+        filteredPreview[index]?.description
+      ).filter(Boolean);
+
+      const response = await fetch('/api/transactions/bulk-categorize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          descriptions: selectedDescriptions,
+          categoryId: parseInt(bulkCategoryId)
+        })
+      });
+
+      if (response.ok) {
+        setSuccess(`Categoria aggiornata per ${selectedItems.size} transazioni`);
+        clearSelection();
+        setBulkCategoryId('');
+        loadData(); // Reload to get updated categories
+      } else {
+        const data = await response.json();
+        setError(data.error || 'Errore durante l\'aggiornamento bulk');
+      }
+    } catch (error) {
+      setError('Errore di rete durante l\'aggiornamento bulk');
+    }
   };
 
   const loadData = async () => {
@@ -724,20 +823,108 @@ export default function CategoriesPage() {
                 </div>
               )}
               
-              <div className="space-y-2">
-                {paginatedPreview.map((item, index) => (
-                  <div key={startIndex + index} className="flex items-center justify-between p-3 border rounded-lg">
-                    <code className="text-sm flex-1">{item.description}</code>
-                    <Badge 
-                      style={{ 
-                        backgroundColor: item.color || '#74b9ff',
-                        color: 'white'
-                      }}
-                    >
-                      {item.category}
-                    </Badge>
+              {/* Bulk Actions Interface */}
+              {paginatedPreview.length > 0 && (
+                <div className="mb-4 p-4 bg-gray-50 rounded-lg border">
+                  <div className="flex flex-wrap items-center gap-4">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={selectedItems.size === paginatedPreview.length && paginatedPreview.length > 0}
+                        onChange={handleSelectAll}
+                        className="rounded border-gray-300"
+                      />
+                      <Label className="text-sm font-medium">
+                        {selectedItems.size === paginatedPreview.length && paginatedPreview.length > 0
+                          ? 'Deseleziona tutto'
+                          : 'Seleziona tutto'}
+                      </Label>
+                      {selectedItems.size > 0 && (
+                        <Badge variant="secondary">{selectedItems.size} selezionate</Badge>
+                      )}
+                    </div>
+                    
+                    {showBulkActions && (
+                      <div className="flex items-center gap-2 ml-auto">
+                        <Label className="text-sm">Assegna categoria:</Label>
+                        <select
+                          value={bulkCategoryId}
+                          onChange={(e) => setBulkCategoryId(e.target.value)}
+                          className="p-2 border border-gray-300 rounded-md text-sm"
+                        >
+                          <option value="">Seleziona categoria</option>
+                          {categories.map((cat) => (
+                            <option key={cat.id} value={cat.id}>{cat.name}</option>
+                          ))}
+                        </select>
+                        <Button 
+                          size="sm" 
+                          onClick={handleBulkCategoryUpdate}
+                          disabled={!bulkCategoryId}
+                        >
+                          Applica
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          onClick={clearSelection}
+                        >
+                          Annulla
+                        </Button>
+                      </div>
+                    )}
                   </div>
-                ))}
+                </div>
+              )}
+              
+              <div className="space-y-2">
+                {paginatedPreview.map((item, index) => {
+                  const itemIndex = startIndex + index;
+                  return (
+                    <div key={itemIndex} className="flex items-center gap-3 p-3 border rounded-lg hover:bg-gray-50">
+                      {/* Selection Checkbox */}
+                      <input
+                        type="checkbox"
+                        checked={selectedItems.has(itemIndex)}
+                        onChange={() => handleSelectItem(itemIndex)}
+                        className="rounded border-gray-300"
+                      />
+                      
+                      {/* Transaction Description */}
+                      <code className="text-sm flex-1 min-w-0">{item.description}</code>
+                      
+                      {/* Current Category Badge */}
+                      <Badge 
+                        style={{ 
+                          backgroundColor: item.color || '#74b9ff',
+                          color: 'white'
+                        }}
+                        className="shrink-0"
+                      >
+                        {item.category}
+                      </Badge>
+                      
+                      {/* Individual Category Assignment */}
+                      <div className="flex items-center gap-2 shrink-0">
+                        <select
+                          onChange={(e) => {
+                            const categoryId = parseInt(e.target.value);
+                            if (categoryId && !isNaN(categoryId)) {
+                              handleSingleCategoryUpdate(item.description, categoryId);
+                            }
+                          }}
+                          className="text-xs p-1 border border-gray-300 rounded text-gray-600 bg-white hover:bg-gray-50"
+                          defaultValue=""
+                        >
+                          <option value="">Cambia</option>
+                          {categories.map((cat) => (
+                            <option key={cat.id} value={cat.id}>{cat.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  );
+                })}
                 {filteredPreview.length === 0 && (
                   <div className="text-center text-gray-500 py-4">
                     {searchTerm.trim() || categoryFilter !== 'all' 
