@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs } from '@/components/ui/tabs';
 import { Pagination } from '@/components/ui/pagination';
-import { Plus, Edit2, Trash2, Save, X, Eye } from 'lucide-react';
+import { Plus, Edit2, Trash2, Save, X, Eye, Search } from 'lucide-react';
 
 interface Category {
   id: number;
@@ -52,6 +52,7 @@ export default function CategoriesPage() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
+  const [searchTerm, setSearchTerm] = useState('');
   
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
@@ -68,14 +69,26 @@ export default function CategoriesPage() {
   }, []);
 
   useEffect(() => {
-    if (categoryFilter === 'all') {
-      setFilteredPreview(preview);
-    } else {
-      setFilteredPreview(preview.filter(item => item.category === categoryFilter));
+    let filtered = preview;
+    
+    // Apply category filter
+    if (categoryFilter !== 'all') {
+      filtered = filtered.filter(item => item.category === categoryFilter);
     }
-    // Reset page when filter changes
+    
+    // Apply search filter
+    if (searchTerm.trim()) {
+      const searchLower = searchTerm.toLowerCase().trim();
+      filtered = filtered.filter(item => 
+        item.description.toLowerCase().includes(searchLower) ||
+        item.category.toLowerCase().includes(searchLower)
+      );
+    }
+    
+    setFilteredPreview(filtered);
+    // Reset page when filters change
     setCurrentPage(1);
-  }, [preview, categoryFilter]);
+  }, [preview, categoryFilter, searchTerm]);
 
   useEffect(() => {
     if (success) {
@@ -644,20 +657,73 @@ export default function CategoriesPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="mb-4">
-                <Label htmlFor="category-filter">Filtra per categoria</Label>
-                <select
-                  id="category-filter"
-                  value={categoryFilter}
-                  onChange={(e) => setCategoryFilter(e.target.value)}
-                  className="w-full max-w-xs p-2 border border-gray-300 rounded-md mt-1"
-                >
-                  <option value="all">Tutte le categorie</option>
-                  {categories.map((cat) => (
-                    <option key={cat.id} value={cat.name}>{cat.name}</option>
-                  ))}
-                </select>
+              <div className="mb-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="category-filter">Filtra per categoria</Label>
+                  <select
+                    id="category-filter"
+                    value={categoryFilter}
+                    onChange={(e) => setCategoryFilter(e.target.value)}
+                    className="w-full p-2 border border-gray-300 rounded-md mt-1"
+                  >
+                    <option value="all">Tutte le categorie</option>
+                    {categories.map((cat) => (
+                      <option key={cat.id} value={cat.name}>{cat.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <Label htmlFor="search-filter">Cerca nelle descrizioni</Label>
+                  <div className="relative mt-1">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                    <Input
+                      id="search-filter"
+                      type="text"
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      placeholder="Cerca transazioni..."
+                      className="pl-10"
+                    />
+                  </div>
+                </div>
               </div>
+              
+              {/* Active Filters Display */}
+              {(searchTerm.trim() || categoryFilter !== 'all') && (
+                <div className="mb-4 flex flex-wrap items-center gap-2">
+                  <span className="text-sm text-gray-600">Filtri attivi:</span>
+                  {categoryFilter !== 'all' && (
+                    <Badge variant="outline" className="flex items-center gap-1">
+                      Categoria: {categoryFilter}
+                      <X 
+                        className="h-3 w-3 cursor-pointer hover:text-red-500" 
+                        onClick={() => setCategoryFilter('all')}
+                      />
+                    </Badge>
+                  )}
+                  {searchTerm.trim() && (
+                    <Badge variant="outline" className="flex items-center gap-1">
+                      Ricerca: "{searchTerm.trim()}"
+                      <X 
+                        className="h-3 w-3 cursor-pointer hover:text-red-500" 
+                        onClick={() => setSearchTerm('')}
+                      />
+                    </Badge>
+                  )}
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={() => {
+                      setCategoryFilter('all');
+                      setSearchTerm('');
+                    }}
+                    className="text-xs"
+                  >
+                    Pulisci tutti
+                  </Button>
+                </div>
+              )}
+              
               <div className="space-y-2">
                 {paginatedPreview.map((item, index) => (
                   <div key={startIndex + index} className="flex items-center justify-between p-3 border rounded-lg">
@@ -674,7 +740,10 @@ export default function CategoriesPage() {
                 ))}
                 {filteredPreview.length === 0 && (
                   <div className="text-center text-gray-500 py-4">
-                    Nessuna transazione trovata per questa categoria
+                    {searchTerm.trim() || categoryFilter !== 'all' 
+                      ? 'Nessuna transazione trovata per i filtri selezionati'
+                      : 'Nessuna transazione disponibile'
+                    }
                   </div>
                 )}
               </div>
