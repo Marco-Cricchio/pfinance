@@ -10,12 +10,9 @@ export async function GET() {
     const accountBalance = getAccountBalance();
     const balanceValidation = calculateCurrentBalance();
     
-    console.log(`📊 Caricati ${stats.totalTransactions} transazioni dal database`);
-    console.log(`💰 Saldo contabile: €${accountBalance.toFixed(2)}`);
     
     // Check for balance discrepancies
     if (!balanceValidation.isWithinThreshold) {
-      console.log(`⚠️ Balance discrepancy detected: €${balanceValidation.difference.toFixed(2)}`);
     }
     
     return NextResponse.json({

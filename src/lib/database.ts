@@ -107,22 +107,18 @@ try {
     const hasUpdatedAt = tableInfo.some(col => col.name === 'updated_at');
     
     if (!hasManualCategoryId) {
-      console.log('🔧 Adding manual_category_id column...');
       db.exec('ALTER TABLE transactions ADD COLUMN manual_category_id INTEGER');
     }
     
     if (!hasIsManualOverride) {
-      console.log('🔧 Adding is_manual_override column...');
       db.exec('ALTER TABLE transactions ADD COLUMN is_manual_override BOOLEAN DEFAULT 0');
     }
     
     if (!hasCreatedAt) {
-      console.log('🔧 Adding created_at column...');
       db.exec('ALTER TABLE transactions ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP');
     }
     
     if (!hasUpdatedAt) {
-      console.log('🔧 Adding updated_at column...');
       db.exec('ALTER TABLE transactions ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP');
     }
     
@@ -133,17 +129,14 @@ try {
     const hasBalanceManualOverride = balanceTableInfo.some(col => col.name === 'is_manual_override');
     
     if (!hasBalanceDate) {
-      console.log('🔧 Adding balance_date column to account_balance...');
       db.exec('ALTER TABLE account_balance ADD COLUMN balance_date DATE');
     }
     
     if (!hasFileSource) {
-      console.log('🔧 Adding file_source column to account_balance...');
       db.exec('ALTER TABLE account_balance ADD COLUMN file_source TEXT');
     }
     
     if (!hasBalanceManualOverride) {
-      console.log('🔧 Adding is_manual_override column to account_balance...');
       db.exec('ALTER TABLE account_balance ADD COLUMN is_manual_override BOOLEAN DEFAULT 0');
     }
     
@@ -178,7 +171,6 @@ try {
     // Set initial balance to €8824.07 if still at default
     const currentBalance = db.prepare('SELECT balance FROM account_balance WHERE id = 1').get() as { balance: number } | undefined;
     if (currentBalance && currentBalance.balance === 1000.0) {
-      console.log('🔧 Setting initial balance to €8824.07...');
       db.exec(`
         UPDATE account_balance 
         SET balance = 8824.07, 
@@ -195,7 +187,6 @@ try {
       `);
     }
     
-    console.log('✅ Database migration completed successfully');
     
     // Create missing indexes after migration
     db.exec(`
@@ -210,7 +201,6 @@ try {
     console.warn('⚠️ Migration warning:', migrationError);
   }
   
-  console.log('✅ Database SQLite inizializzato correttamente');
   
   // Initialize default categories and rules
   import('./categorizer').then(({ initializeDefaultCategories }) => {
@@ -298,7 +288,6 @@ export function insertTransactions(transactions: Transaction[]): { inserted: num
   
   try {
     transaction(transactions);
-    console.log(`✅ Inserite ${inserted} nuove transazioni, ${duplicates} duplicati ignorati`);
     return { inserted, duplicates };
   } catch (error) {
     console.error('Errore inserimento batch transazioni:', error);
@@ -362,7 +351,6 @@ export function getParsedData(): ParsedData {
 export function clearAllTransactions(): void {
   try {
     db.exec('DELETE FROM transactions');
-    console.log('✅ Tutte le transazioni sono state eliminate');
   } catch (error) {
     console.error('Errore eliminazione transazioni:', error);
   }
@@ -412,7 +400,6 @@ export function recategorizeAllTransactions(categorizeFunction: (description: st
     });
     
     transaction();
-    console.log(`✅ Ricategorizzate ${updated} transazioni`);
     return updated;
   } catch (error) {
     console.error('Errore ricategorizzazione transazioni:', error);
@@ -435,7 +422,6 @@ export function updateAccountBalance(newBalance: number): void {
   try {
     const stmt = db.prepare('UPDATE account_balance SET balance = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 1');
     stmt.run(newBalance);
-    console.log(`✅ Saldo contabile aggiornato a €${newBalance.toFixed(2)}`);
   } catch (error) {
     console.error('Errore aggiornamento saldo contabile:', error);
   }
@@ -782,7 +768,6 @@ export function setActiveFileBalance(fileBalanceId: number): boolean {
         VALUES (?, ?, ?, ?)
       `).run(currentBalance, selectedBalance.balance, 'file_selection', selectedBalance.filename);
       
-      console.log(`✅ Active balance set to €${selectedBalance.balance} from ${selectedBalance.filename}`);
     });
     
     transaction();
@@ -818,7 +803,6 @@ export function setManualBalance(newBalance: number, reason: string = 'manual_ov
       VALUES (?, ?, ?, ?)
     `).run(currentBalance, newBalance, reason, 'user');
     
-    console.log(`🔧 Manual balance override: €${currentBalance} → €${newBalance} (Reason: ${reason})`);
     return result.changes > 0;
   } catch (error) {
     console.error('Error setting manual balance:', error);
@@ -1119,7 +1103,6 @@ Ho accesso ai tuoi dati finanziari e posso aiutarti con:
 Come posso aiutarti oggi? Puoi farmi qualsiasi domanda sui tuoi dati finanziari!`;
     
     insertChatMessage(sessionId, 'assistant', welcomeMessage);
-    console.log('✅ Welcome message initialized for session:', sessionId);
   } catch (error) {
     console.error('Error initializing welcome message:', error);
   }

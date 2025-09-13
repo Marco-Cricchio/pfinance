@@ -43,6 +43,8 @@ const eslintConfig = [
       "react/no-unescaped-entities": "off",
       // Allow require imports in server-only code with disable comments
       "@typescript-eslint/no-require-imports": "error",
+      // Restrict console usage to errors and warnings only
+      "no-console": ["error", { "allow": ["warn", "error"] }],
     },
   },
 ];

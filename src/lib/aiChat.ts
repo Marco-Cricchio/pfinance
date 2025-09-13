@@ -143,7 +143,6 @@ async function testModelValidity(
   openAIMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[]
 ): Promise<boolean> {
   try {
-    console.log(`🔍 Testing model ${model}...`);
     
     const stream = await openai.chat.completions.create({
       model,
@@ -161,13 +160,11 @@ async function testModelValidity(
       const content = chunk.choices[0]?.delta?.content || '';
       
       if (content && content.trim().length > 0) {
-        console.log(`✅ Model ${model} is working (content found in chunk ${chunkCount})`);
         return true;
       }
       
       // Se dopo 20 chunk non c'è contenuto, considera il modello fallito
       if (chunkCount >= 20) {
-        console.log(`⚠️ Model ${model} failed (no content after ${chunkCount} chunks)`);
         return false;
       }
       
@@ -176,11 +173,9 @@ async function testModelValidity(
       }
     }
     
-    console.log(`⚠️ Model ${model} completed but no content found`);
     return false;
     
   } catch (error) {
-    console.log(`❌ Model ${model} test failed:`, error);
     return false;
   }
 }
@@ -237,7 +232,6 @@ async function createModelStream(
         controller.enqueue(encoder.encode(completeData));
         controller.close();
         
-        console.log(`✅ Chat completata con successo usando ${model}, lunghezza: ${fullResponseText.length}`);
         
       } catch (error) {
         console.error(`❌ Errore durante streaming:`, error);
@@ -288,17 +282,14 @@ export async function generateChatCompletion(
   for (let i = 0; i < AI_MODELS.length; i++) {
     const model = AI_MODELS[i];
     
-    console.log(`🤖 Tentativo ${i + 1}/${AI_MODELS.length} con modello: ${model}`);
     
     try {
       // Prima testa se il modello funziona
       const isWorking = await testModelValidity(model, openAIMessages);
       
       if (isWorking) {
-        console.log(`✅ Modello ${model} funziona, creando stream...`);
         return await createModelStream(model, openAIMessages);
       } else {
-        console.log(`⚠️ Modello ${model} non funziona, provo il prossimo...`);
         continue;
       }
       
@@ -308,7 +299,6 @@ export async function generateChatCompletion(
       
       // Se non è l'ultimo modello, continua con il prossimo
       if (i < AI_MODELS.length - 1) {
-        console.log(`🔄 Provo il modello successivo: ${AI_MODELS[i + 1]}`);
         continue;
       }
     }

@@ -18,7 +18,6 @@ export async function GET() {
       created_at_formatted: new Date(balance.created_at).toLocaleDateString('it-IT')
     }));
     
-    console.log(`📊 Retrieved ${fileBalances.length} file balances`);
     
     return NextResponse.json({
       success: true,

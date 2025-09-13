@@ -14,11 +14,6 @@ export async function GET() {
     // Get recent audit log for context
     const auditLog = getBalanceAuditLog(5);
     
-    console.log(`🔍 Balance validation:`);
-    console.log(`   Base Balance: €${validation.baseBalance}`);
-    console.log(`   Calculated: €${validation.calculatedBalance}`);
-    console.log(`   Difference: €${validation.difference}`);
-    console.log(`   Within Threshold: ${validation.isWithinThreshold}`);
     
     const response = {
       success: true,
@@ -43,9 +38,7 @@ export async function GET() {
     };
     
     if (!validation.isWithinThreshold) {
-      console.log(`⚠️ BALANCE ALERT: Difference €${validation.difference} exceeds threshold €50`);
     } else {
-      console.log(`✅ Balance validation passed - within €50 threshold`);
     }
     
     return NextResponse.json(response);

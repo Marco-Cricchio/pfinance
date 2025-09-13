@@ -41,7 +41,6 @@ export async function POST(request: NextRequest) {
     
     const result = updateStmt.run(categoryId, description);
     
-    console.log(`✅ Single categorization: ${result.changes} transactions updated with category ${categoryId} for description "${description}"`);
     
     return NextResponse.json({ 
       success: true,

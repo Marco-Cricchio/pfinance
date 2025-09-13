@@ -126,7 +126,6 @@ export async function POST(request: NextRequest) {
               // Salva la risposta completa nel database
               if (fullResponse.trim().length > 0) {
                 insertChatMessage(session.id, 'assistant', fullResponse.trim());
-                console.log('✅ Risposta AI salvata nel database:', fullResponse.length, 'caratteri');
               } else {
                 console.warn('⚠️ Nessun contenuto da salvare per la risposta AI');
               }
@@ -135,21 +134,16 @@ export async function POST(request: NextRequest) {
             
             // Estrai il contenuto per salvarlo
             const chunk = new TextDecoder().decode(value);
-            console.log('🔍 Raw chunk:', JSON.stringify(chunk.substring(0, 100)) + '...');
             const lines = chunk.split('\n');
             
             for (const line of lines) {
               if (line.startsWith('data: ')) {
-                console.log('📦 SSE line:', line.substring(0, 100) + '...');
                 try {
                   const data = JSON.parse(line.slice(6));
-                  console.log('📊 Parsed data:', { type: data.type, hasContent: !!data.content, contentLength: data.content?.length || 0 });
                   if (data.type === 'chunk' && data.content) {
                     fullResponse += data.content;
-                    console.log('✅ Added chunk, total length:', fullResponse.length);
                   } else if (data.type === 'complete' && data.content) {
                     fullResponse = data.content; // Use complete content if available
-                    console.log('🏁 Complete response received, length:', fullResponse.length);
                   }
                 } catch (parseError) {
                   console.warn('⚠️ Parse error:', parseError, 'for line:', line.substring(0, 50));

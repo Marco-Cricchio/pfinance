@@ -31,7 +31,6 @@ export async function POST(request: NextRequest) {
     const success = setManualBalance(numericBalance, overrideReason);
     
     if (success) {
-      console.log(`🔧 Manual balance override: €${numericBalance} (Reason: ${overrideReason})`);
       
       return NextResponse.json({
         success: true,

@@ -53,7 +53,6 @@ export async function POST(request: NextRequest) {
     
     updateTransaction();
     
-    console.log(`✅ Bulk categorization: ${updatedCount} transactions updated with category ${categoryId}`);
     
     return NextResponse.json({ 
       success: true,

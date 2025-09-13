@@ -190,7 +190,6 @@ export function initializeDefaultCategories(): void {
     // Check if categories already exist
     const existingCount = db.prepare('SELECT COUNT(*) as count FROM categories').get() as { count: number };
     if (existingCount.count > 0) {
-      console.log('Categories already initialized');
       return;
     }
     
@@ -300,7 +299,6 @@ export function initializeDefaultCategories(): void {
     });
     
     transaction();
-    console.log('✅ Default categories and rules initialized');
     
   } catch (error) {
     console.error('Error initializing categories:', error);

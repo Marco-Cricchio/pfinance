@@ -73,7 +73,6 @@ Concentrati su:
   for (let i = 0; i < AI_MODELS.length; i++) {
     const model = AI_MODELS[i];
     try {
-      console.log(`🤖 Tentativo ${i + 1}/${AI_MODELS.length} con modello: ${model}`);
       
       const response = await openai.chat.completions.create({
         model,
@@ -100,7 +99,6 @@ Concentrati su:
       try {
         const parsed = JSON.parse(content);
         if (parsed.insights && Array.isArray(parsed.insights) && parsed.insights.length > 0) {
-          console.log(`✅ Successo con modello: ${model} - ${parsed.insights.length} consigli generati`);
           return parsed.insights;
         } else {
           console.warn(`❌ Formato risposta non valido da ${model}`);
@@ -114,7 +112,6 @@ Concentrati su:
           try {
             const parsed = JSON.parse(jsonMatch[0]);
             if (parsed.insights && Array.isArray(parsed.insights)) {
-              console.log(`✅ Successo con parsing alternativo da ${model}`);
               return parsed.insights;
             }
           } catch (secondParseError) {

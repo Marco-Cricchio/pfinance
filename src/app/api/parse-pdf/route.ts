@@ -72,7 +72,6 @@ function extractBalanceFromPDF(text: string): { balance: number | null; pattern?
       const upperLine = line.toUpperCase();
       
       if (upperLine.includes(pattern)) {
-        console.log(`🔍 Found balance pattern "${pattern}" in line:`, line);
         
         // Try to extract amount from the same line first
         const amountMatch = line.match(/(\d{1,3}(?:\.\d{3})*,\d{2}|\d+,\d{2}|\d+)/g);
@@ -86,7 +85,6 @@ function extractBalanceFromPDF(text: string): { balance: number | null; pattern?
           const dateMatch = line.match(/\b(\d{2})\/(\d{2})\/(\d{2})\b/);
           const balanceDate = dateMatch ? formatItalianDate(dateMatch[0]) : undefined;
           
-          console.log(`✅ Extracted balance: €${balance} using pattern "${pattern}"`);
           return { 
             balance, 
             pattern, 
@@ -97,20 +95,15 @@ function extractBalanceFromPDF(text: string): { balance: number | null; pattern?
     }
   }
   
-  console.log('⚠️ No balance found in PDF using any known pattern');
   return { balance: null };
 }
 
 export async function POST(request: NextRequest) {
   try {
-    console.log('=== PDF Parse API Called ===');
     
     const formData = await request.formData();
     const file = formData.get('file') as File;
     
-    console.log('File received:', file ? file.name : 'NO FILE');
-    console.log('File size:', file ? file.size : 'N/A');
-    console.log('File type:', file ? file.type : 'N/A');
     
     if (!file || !file.name.endsWith('.pdf')) {
       return NextResponse.json({ error: 'File PDF richiesto' }, { status: 400 });
@@ -121,22 +114,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'File PDF troppo piccolo o corrotto' }, { status: 400 });
     }
 
-    console.log('Reading PDF buffer...');
     const buffer = await file.arrayBuffer();
     const data = new Uint8Array(buffer);
     
-    console.log('Importing PDF.js...');
     const pdfjsLib = await importPdfJs();
     
-    console.log('Loading PDF document...');
     const pdf = await pdfjsLib.getDocument({ data }).promise;
-    console.log('PDF loaded successfully, pages:', pdf.numPages);
     
     let fullText = '';
     
     // Extract text from all pages with better layout preservation and column detection
     for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-      console.log(`Processing page ${pageNum}/${pdf.numPages}...`);
       const page = await pdf.getPage(pageNum);
       const textContent = await page.getTextContent();
       
@@ -187,12 +175,10 @@ export async function POST(request: NextRequest) {
       fullText += pageText + '\n';
     }
     
-    console.log('PDF text extraction complete, extracting balance...');
     
     // Extract balance from PDF text
     const balanceInfo = extractBalanceFromPDF(fullText);
     
-    console.log('Processing transactions...');
     
     // Split text into lines
     const lines = fullText.split('\n').filter(line => line.trim().length > 0);
@@ -204,7 +190,6 @@ export async function POST(request: NextRequest) {
     let currentTransaction = null;
     let _lineNumber = 0;
     
-    console.log(`Processing ${lines.length} lines of text...`);
     
     for (const line of lines) {
       _lineNumber++;
@@ -326,18 +311,15 @@ export async function POST(request: NextRequest) {
       transactions.push(transaction);
     }
     
-    console.log(`Parsing complete: ${transactions.length} transactions found`);
     
     if (transactions.length === 0) {
       return NextResponse.json({ error: 'Nessuna transazione trovata nel PDF. Verificare che il formato sia supportato.' }, { status: 400 });
     }
     
-    console.log(`Saving ${transactions.length} transactions to database...`);
     
     // Save transactions to database (automatically avoids duplicates)
     const { inserted, duplicates } = insertTransactions(transactions);
     
-    console.log(`Database save complete: ${inserted} new transactions, ${duplicates} duplicates ignored`);
     
     // Save balance to file_balances table if found
     if (balanceInfo.balance !== null) {
@@ -350,12 +332,9 @@ export async function POST(request: NextRequest) {
       );
       
       if (balanceId) {
-        console.log(`✅ Balance €${balanceInfo.balance} saved to file_balances with ID ${balanceId}`);
       } else {
-        console.log('⚠️ Failed to save balance to database');
       }
     } else {
-      console.log('⚠️ No balance extracted from PDF - not saved to database');
     }
     
     // Retrieve all data from database (including existing transactions)

@@ -40,7 +40,6 @@ export async function GET(request: NextRequest) {
                    entry.change_reason === 'initial_setup' ? 'setup' : 'other'
     }));
     
-    console.log(`📋 Retrieved ${auditLog.length} balance audit entries`);
     
     return NextResponse.json({
       success: true,

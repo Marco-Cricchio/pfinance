@@ -7,7 +7,6 @@ import {
 
 export async function GET() {
   try {
-    console.log('Testing PDF parsing utilities...\n');
     
     const results: any = {
       dateTests: {},
@@ -16,7 +15,6 @@ export async function GET() {
     };
     
     // Test date parsing
-    console.log('=== Testing Date Parsing ===');
     results.dateTests = {
       '02/07/24': formatItalianDate('02/07/24'),
       '29/06/24': formatItalianDate('29/06/24'),
@@ -24,7 +22,6 @@ export async function GET() {
     };
     
     // Test amount parsing
-    console.log('=== Testing Amount Parsing ===');
     results.amountTests = {
       '4,99': parseItalianAmount('4,99'),
       '1.234,56': parseItalianAmount('1.234,56'),
@@ -33,7 +30,6 @@ export async function GET() {
     };
     
     // Test transaction line parsing with real examples from the PDF
-    console.log('=== Testing Transaction Line Parsing ===');
     
     const testLines = [
       "02/07/24   29/06/24   4,99   PAGAMENTO   POS   29/06/2024   20.42 Google   YouTube Member London   GBR   OPERAZIONE   644320   CARTA   65346485",
@@ -44,8 +40,6 @@ export async function GET() {
     ];
     
     testLines.forEach((line, index) => {
-      console.log(`\nTest line ${index + 1}:`);
-      console.log(`Input: ${line.substring(0, 80)}...`);
       
       const result = parseTransactionLine(line);
       
@@ -66,15 +60,7 @@ export async function GET() {
       results.transactionTests.push(testResult);
       
       if (result) {
-        console.log(`✅ Parsed successfully:`);
-        console.log(`   Date1: ${result.date1}`);
-        console.log(`   Date2: ${result.date2}`);
-        console.log(`   Amount: ${result.amount} -> ${parseItalianAmount(result.amount)}`);
-        console.log(`   Type: ${result.type}`);
-        console.log(`   Operation: ${result.operationType || 'N/A'}`);
-        console.log(`   Description: ${result.description.substring(0, 50)}...`);
       } else {
-        console.log(`❌ Failed to parse`);
       }
     });
     
@@ -84,11 +70,6 @@ export async function GET() {
       failedParses: results.transactionTests.filter((t: any) => !t.parsed).length
     };
     
-    console.log('\n=== Test Summary ===');
-    console.log(`Total tests: ${summary.totalTests}`);
-    console.log(`Successful parses: ${summary.successfulParses}`);
-    console.log(`Failed parses: ${summary.failedParses}`);
-    console.log(`Success rate: ${(summary.successfulParses / summary.totalTests * 100).toFixed(1)}%`);
     
     return NextResponse.json({
       success: true,

@@ -136,7 +136,6 @@ export function WeeklyPatternsCard({ transactions }: WeeklyPatternsCardProps) {
 
     // Log per debug (solo in development)
     if (process.env.NODE_ENV === 'development') {
-      console.log(`📊 Pattern Settimanali - Orari estratti dalle descrizioni: ${extractedTimeCount}/${extractedTimeCount + defaultTimeCount}`);
     }
 
     const dayPatterns: DayPattern[] = Object.entries(dayData).map(([dayIndex, data]) => ({
