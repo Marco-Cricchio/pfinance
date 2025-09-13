@@ -207,71 +207,108 @@ export function parseBancoPosta(text: string): {
       continue;
     }
     
-    // Skip header row
-    if (inMovimentiSection && !headerParsed && 
-        (line.includes('Data Contabile') || line.includes('Data Valuta') || line.includes('Descrizione'))) {
-      headerParsed = true;
-      continue;
+    // Skip header row - BancoPosta format detection
+    if (inMovimentiSection && !headerParsed) {
+      // Look for header indicators in BancoPosta format
+      if (line.includes('Data Contabile') || 
+          line.includes('Data Valuta') || 
+          line.includes('Descrizione operazioni') ||
+          line.includes('Addebiti') ||
+          line.includes('Accrediti')) {
+        headerParsed = true;
+        continue;
+      }
+      // If we find transaction-like data without a clear header, start parsing
+      if (line.match(/\d{2}\/\d{2}\/\d{4}/) && line.length > 30) {
+        headerParsed = true;
+        // Don't continue, process this line as a transaction
+      }
     }
     
-    // Parse transaction lines
-    if (inMovimentiSection && headerParsed && line.length > 20) {
+    
+    // Parse transaction lines - BancoPosta multi-line format
+    if (inMovimentiSection && headerParsed) {
+      
       // Skip non-transaction lines
       if (line.includes('Pag.') || 
           line.includes('BancoPosta') ||
           line.includes('Posteitaliane') ||
           line.includes('SALDO') ||
           line.includes('RIEPILOGO') ||
-          !line.match(/\d{2}\/\d{2}\/\d{4}/)) {
+          line.trim() === '') {
         continue;
       }
       
-      // Try to parse as transaction line
-      // BancoPosta format: Data Contabile | Data Valuta | Descrizione | Addebiti | Accrediti
-      // We need to be smart about parsing since the table format can vary
+      // BancoPosta format is multi-line per transaction:
+      // Line 1: Description + operation details (no dates)
+      // Line 2: Data Contabile + Data Valuta + Amount  
+      // Line 3: Card details (optional)
       
+      // Check if this is a "date line" with exactly 2 dates and an amount
       const dateMatches = [...line.matchAll(/(\d{2}\/\d{2}\/\d{4})/g)];
+      const amountMatch = line.match(/([\d]+[,.]\d{2})\s*$/);
       
-      if (dateMatches.length >= 2) {
+      if (dateMatches.length === 2 && amountMatch) {
         const dataContabile = dateMatches[0][1];
         const dataValuta = dateMatches[1][1];
+        const amount = amountMatch[1];
         
-        // Find the description between the second date and the amounts
-        const secondDateIndex = dateMatches[1].index! + dateMatches[1][0].length;
-        const remainingLine = line.substring(secondDateIndex).trim();
+        // Look backwards for the description line and forward for card info
+        let description = '';
+        let cardInfo = '';
         
-        // Look for amounts at the end of the line
-        const amountMatches = [...remainingLine.matchAll(/([\d.,]+)/g)];
-        
-        if (amountMatches.length > 0) {
-          // Get the last amount (could be debit or credit)
-          const lastAmount = amountMatches[amountMatches.length - 1][1];
-          const amountIndex = remainingLine.lastIndexOf(lastAmount);
-          
-          // Description is everything before the last amount
-          const description = remainingLine.substring(0, amountIndex).trim();
-          
-          // Determine if it's debit or credit based on context or amount position
-          let addebiti = '';
-          let accrediti = '';
-          
-          // Simple heuristic: if description suggests expense, treat as debit
-          const descLower = description.toLowerCase();
-          if (descLower.includes('pagamento') || descLower.includes('prelievo') || 
-              descLower.includes('addebito') || descLower.includes('pedaggio')) {
-            addebiti = lastAmount;
-          } else {
-            // For now, assume most transactions are expenses unless clearly income
-            // This can be refined based on the description content
-            addebiti = lastAmount;
+        // Find description line (previous non-date line)
+        for (let j = i - 1; j >= 0; j--) {
+          const prevLine = lines[j].trim();
+          if (prevLine && 
+              !prevLine.includes('Pag.') && 
+              !prevLine.match(/^\d{2}\/\d{2}\/\d{4}/) &&
+              prevLine.length > 10) {
+            description = prevLine;
+            break;
           }
+        }
+        
+        // Look forward for additional info (next line usually contains additional transaction details)
+        if (i + 1 < lines.length) {
+          const nextLine = lines[i + 1].trim();
+          // Include the next line if it's not empty, not a page number, and doesn't look like a new transaction
+          if (nextLine && 
+              !nextLine.includes('Pag.') && 
+              !nextLine.includes('BancoPosta') &&
+              !nextLine.includes('Posteitaliane') &&
+              !nextLine.includes('SALDO') &&
+              !nextLine.includes('RIEPILOGO') &&
+              !nextLine.match(/^\d{2}\/\d{2}\/\d{4}/) && // Not starting with a date (new transaction)
+              nextLine.length > 3 && // Not just ****
+              nextLine.length < 100) { // Reasonable length
+            cardInfo = nextLine;
+          }
+        }
+        
+        // Reconstruct complete description in normalized format
+        if (description) {
+          let completeDescription = description;
           
+          // Normalize operation codes (OP. -> Op.)
+          completeDescription = completeDescription.replace(/\bOP\./g, 'Op.');
+          
+          // Add card info if available, normalizing the format
+          if (cardInfo) {
+            // Normalize card info (CARTA ****2943 -> carta ****2943)
+            const normalizedCardInfo = cardInfo
+              .replace(/^CARTA/i, 'carta')
+              .replace(/^OP\./g, 'Op.');
+            completeDescription += ' ' + normalizedCardInfo;
+          }
+        
+          // Most BancoPosta transactions are expenses (addebiti)
           const rawTransaction = parseTransactionRow(
             dataContabile,
             dataValuta,
-            description,
-            addebiti,
-            accrediti
+            completeDescription,
+            amount, // addebiti (expense)
+            ''      // accrediti (income)
           );
           
           if (rawTransaction) {

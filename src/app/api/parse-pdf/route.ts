@@ -183,8 +183,6 @@ export async function POST(request: NextRequest) {
     
     if (detectedFormat === 'BancoPosta') {
       // Use BancoPosta-specific parser
-      console.log('Detected BancoPosta format, using specialized parser');
-      
       const bancoPostaResult = parseBancoPosta(fullText);
       
       // Apply categorization to transactions
@@ -199,14 +197,13 @@ export async function POST(request: NextRequest) {
       // Extract and save balance
       const balanceInfo = extractBancoPostaBalance(fullText);
       if (balanceInfo.balance !== null) {
-        const balanceId = saveFileBalance(
+        saveFileBalance(
           file.name,
           balanceInfo.balance,
           'pdf',
           balanceInfo.date,
           balanceInfo.pattern
         );
-        console.log(balanceId ? 'Balance saved successfully' : 'Failed to save balance');
       }
       
       // Retrieve all data from database
@@ -224,7 +221,6 @@ export async function POST(request: NextRequest) {
     }
     
     // Fallback to original parser for other formats
-    console.log('Using original PDF parser for format:', detectedFormat || 'Unknown');
     
     // Extract balance from PDF text
     const balanceInfo = extractBalanceFromPDF(fullText);
