@@ -345,6 +345,88 @@ export default function CategoriesPage() {
     }
   };
 
+  // Bulk operations for categories and rules
+  const [selectedCategories, setSelectedCategories] = useState<Set<number>>(new Set());
+  const [selectedRules, setSelectedRules] = useState<Set<number>>(new Set());
+  const [showCategoryBulkActions, setShowCategoryBulkActions] = useState(false);
+  const [showRuleBulkActions, setShowRuleBulkActions] = useState(false);
+
+  const handleSelectCategory = (categoryId: number) => {
+    const newSelected = new Set(selectedCategories);
+    if (newSelected.has(categoryId)) {
+      newSelected.delete(categoryId);
+    } else {
+      newSelected.add(categoryId);
+    }
+    setSelectedCategories(newSelected);
+    setShowCategoryBulkActions(newSelected.size > 0);
+  };
+
+  const handleSelectRule = (ruleId: number) => {
+    const newSelected = new Set(selectedRules);
+    if (newSelected.has(ruleId)) {
+      newSelected.delete(ruleId);
+    } else {
+      newSelected.add(ruleId);
+    }
+    setSelectedRules(newSelected);
+    setShowRuleBulkActions(newSelected.size > 0);
+  };
+
+  const deleteBulkCategories = async () => {
+    if (selectedCategories.size === 0) return;
+    
+    if (!confirm(`Sei sicuro di voler eliminare ${selectedCategories.size} categorie? Questa azione eliminerà anche tutte le regole associate.`)) return;
+    
+    try {
+      const response = await fetch('/api/categories/bulk', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ categoryIds: Array.from(selectedCategories) })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setSuccess(data.message);
+        setSelectedCategories(new Set());
+        setShowCategoryBulkActions(false);
+        loadData();
+      } else {
+        const data = await response.json();
+        setError(data.error || 'Errore durante l\'eliminazione');
+      }
+    } catch (error) {
+      setError('Errore di rete durante l\'eliminazione');
+    }
+  };
+
+  const deleteBulkRules = async () => {
+    if (selectedRules.size === 0) return;
+    
+    if (!confirm(`Sei sicuro di voler eliminare ${selectedRules.size} regole?`)) return;
+    
+    try {
+      const response = await fetch('/api/category-rules/bulk', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ruleIds: Array.from(selectedRules) })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setSuccess(data.message);
+        setSelectedRules(new Set());
+        setShowRuleBulkActions(false);
+        loadData();
+      } else {
+        const data = await response.json();
+        setError(data.error || 'Errore durante l\'eliminazione');
+      }
+    } catch (error) {
+      setError('Errore di rete durante l\'eliminazione');
+    }
+  };
+
   const deleteCategory = async (id: number) => {
     if (!confirm('Sei sicuro di voler eliminare questa categoria?')) return;
     
@@ -769,8 +851,28 @@ export default function CategoriesPage() {
             {/* Categories List */}
             <Card>
               <CardHeader>
-                <CardTitle>Categorie Esistenti</CardTitle>
-                <CardDescription>{categories.length} categorie totali</CardDescription>
+                <div className="flex justify-between items-center">
+                  <div>
+                    <CardTitle>Categorie Esistenti</CardTitle>
+                    <CardDescription>{categories.length} categorie totali</CardDescription>
+                  </div>
+                  {showCategoryBulkActions && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-muted-foreground">
+                        {selectedCategories.size} selezionate
+                      </span>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={deleteBulkCategories}
+                        className="flex items-center gap-2"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        Elimina Selezionate
+                      </Button>
+                    </div>
+                  )}
+                </div>
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
@@ -808,6 +910,12 @@ export default function CategoriesPage() {
                       ) : (
                         <>
                           <div className="flex items-center space-x-4">
+                            <input
+                              type="checkbox"
+                              checked={selectedCategories.has(category.id)}
+                              onChange={() => handleSelectCategory(category.id)}
+                              className="w-4 h-4"
+                            />
                             <div
                               className="w-4 h-4 rounded"
                               style={{ backgroundColor: category.color }}
@@ -902,8 +1010,28 @@ export default function CategoriesPage() {
             {/* Rules List */}
             <Card>
               <CardHeader>
-                <CardTitle>Regole Esistenti</CardTitle>
-                <CardDescription>{rules.length} regole totali</CardDescription>
+                <div className="flex justify-between items-center">
+                  <div>
+                    <CardTitle>Regole Esistenti</CardTitle>
+                    <CardDescription>{rules.length} regole totali</CardDescription>
+                  </div>
+                  {showRuleBulkActions && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-muted-foreground">
+                        {selectedRules.size} selezionate
+                      </span>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={deleteBulkRules}
+                        className="flex items-center gap-2"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        Elimina Selezionate
+                      </Button>
+                    </div>
+                  )}
+                </div>
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
@@ -956,6 +1084,12 @@ export default function CategoriesPage() {
                       ) : (
                         <>
                           <div className="flex items-center space-x-4">
+                            <input
+                              type="checkbox"
+                              checked={selectedRules.has(rule.id)}
+                              onChange={() => handleSelectRule(rule.id)}
+                              className="w-4 h-4"
+                            />
                             <div
                               className="w-4 h-4 rounded"
                               style={{ backgroundColor: rule.category_color }}

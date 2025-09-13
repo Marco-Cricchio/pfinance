@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { AlertCircle, CheckCircle, DollarSign, FileText, Settings, History, TrendingUp, AlertTriangle } from 'lucide-react';
+import { AlertCircle, CheckCircle, DollarSign, FileText, Settings, History, TrendingUp, AlertTriangle, RotateCcw } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -41,6 +41,7 @@ export function BalanceManager() {
   const [showOverrideDialog, setShowOverrideDialog] = useState(false);
   const [showBalancesDialog, setShowBalancesDialog] = useState(false);
   const [showAuditDialog, setShowAuditDialog] = useState(false);
+  const [showResetDialog, setShowResetDialog] = useState(false);
   const [overrideAmount, setOverrideAmount] = useState('');
   const [overrideReason, setOverrideReason] = useState('');
   const [auditLog, setAuditLog] = useState<any[]>([]);
@@ -146,6 +147,32 @@ export function BalanceManager() {
     } catch (error) {
       console.error('Error overriding balance:', error);
       alert('Errore durante l\'override del saldo');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resetAllBalances = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch('/api/balance/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+      if (response.ok) {
+        setShowResetDialog(false);
+        await loadValidation();
+        await loadFileBalances();
+        // Refresh page to update all components
+        window.location.reload();
+      } else {
+        const error = await response.json();
+        alert(`Errore: ${error.error}`);
+      }
+    } catch (error) {
+      console.error('Error resetting balances:', error);
+      alert('Errore durante il reset dei saldi');
     } finally {
       setLoading(false);
     }
@@ -329,6 +356,16 @@ export function BalanceManager() {
           Storico Modifiche
         </Button>
 
+        <Button
+          variant="destructive"
+          size="sm"
+          className="w-full justify-start text-xs"
+          onClick={() => setShowResetDialog(true)}
+        >
+          <RotateCcw className="h-3 w-3 mr-2" />
+          Reset Completo Saldi
+        </Button>
+
         <Dialog open={showAuditDialog} onOpenChange={setShowAuditDialog}>
           <DialogContent className="max-w-2xl">
             <DialogHeader>
@@ -376,6 +413,53 @@ export function BalanceManager() {
             <DialogFooter>
               <Button variant="outline" onClick={() => setShowAuditDialog(false)}>
                 Chiudi
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={showResetDialog} onOpenChange={setShowResetDialog}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Reset Completo Saldi</DialogTitle>
+              <DialogDescription>
+                Questa operazione eliminerà TUTTI i dati relativi ai saldi:
+                <br />• Tutti i saldi estratti dai file
+                <br />• Tutti gli override manuali
+                <br />• Tutta la cronologia dei saldi
+                <br />Il saldo corrente verrà impostato a 0.00€
+              </DialogDescription>
+            </DialogHeader>
+            
+            <div className="py-4">
+              <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="h-5 w-5 text-red-600 mt-0.5" />
+                  <div>
+                    <div className="font-medium text-red-800">Attenzione!</div>
+                    <div className="text-sm text-red-700 mt-1">
+                      Questa azione è <strong>irreversibile</strong>. Tutti i dati relativi ai saldi verranno eliminati definitivamente e il saldo verrà resettato a zero.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <DialogFooter className="!flex !flex-col space-y-3">
+              <Button 
+                variant="destructive" 
+                onClick={resetAllBalances} 
+                disabled={loading}
+                className="w-full"
+              >
+                {loading ? 'Resettando...' : 'Conferma Reset Completo'}
+              </Button>
+              <Button 
+                variant="outline" 
+                onClick={() => setShowResetDialog(false)}
+                className="w-full"
+              >
+                Annulla
               </Button>
             </DialogFooter>
           </DialogContent>
