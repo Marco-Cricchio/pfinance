@@ -187,31 +187,46 @@ export function initializeDefaultCategories(): void {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { db } = require('./database');
     
-    // Check if categories already exist
+    // Robust initialization check using persistent flag
+    const initStatus = db.prepare(`
+      SELECT categories_initialized, initialization_count, first_initialized_at 
+      FROM system_initialization WHERE id = 1
+    `).get() as { categories_initialized: number; initialization_count: number; first_initialized_at: string | null } | undefined;
+    
+    // If already initialized, skip
+    if (initStatus?.categories_initialized) {
+      // Update last checked timestamp
+      db.prepare(`
+        UPDATE system_initialization 
+        SET last_checked_at = CURRENT_TIMESTAMP 
+        WHERE id = 1
+      `).run();
+      return;
+    }
+    
+    // Additional safety check: if categories exist but flag is not set, set the flag
     const existingCount = db.prepare('SELECT COUNT(*) as count FROM categories').get() as { count: number };
     if (existingCount.count > 0) {
+      // Categories exist, mark as initialized to prevent future runs
+      db.prepare(`
+        UPDATE system_initialization 
+        SET categories_initialized = 1,
+            first_initialized_at = COALESCE(first_initialized_at, CURRENT_TIMESTAMP),
+            initialization_count = initialization_count + 1,
+            last_checked_at = CURRENT_TIMESTAMP
+        WHERE id = 1
+      `).run();
       return;
     }
     
     const transaction = db.transaction(() => {
-      // Insert default categories
+      // Insert only one example category
       const insertCategory = db.prepare(`
         INSERT INTO categories (name, type, color)
         VALUES (?, ?, ?)
       `);
       
       const categories = [
-        { name: 'Alimenti', type: 'expense', color: '#ff6b6b' },
-        { name: 'Trasporti', type: 'expense', color: '#4ecdc4' },
-        { name: 'Casa', type: 'expense', color: '#45b7d1' },
-        { name: 'Utenze', type: 'expense', color: '#f9ca24' },
-        { name: 'Salute', type: 'expense', color: '#f0932b' },
-        { name: 'Ristorazione', type: 'expense', color: '#eb4d4b' },
-        { name: 'Abbigliamento', type: 'expense', color: '#6c5ce7' },
-        { name: 'Svago', type: 'expense', color: '#a29bfe' },
-        { name: 'Abbonamenti', type: 'expense', color: '#fd79a8' },
-        { name: 'Spese Bancarie', type: 'expense', color: '#636e72' },
-        { name: 'Stipendio', type: 'income', color: '#00b894' },
         { name: 'Altro', type: 'both', color: '#74b9ff' }
       ];
       
@@ -222,107 +237,15 @@ export function initializeDefaultCategories(): void {
       // Get category IDs for rules
       const getCategoryId = db.prepare('SELECT id FROM categories WHERE name = ?');
       
-      // Insert basic rules from existing hardcoded logic
+      // Insert only one example rule
       const insertRule = db.prepare(`
         INSERT INTO category_rules (category_id, pattern, match_type, priority)
         VALUES (?, ?, ?, ?)
       `);
       
       const rules = [
-        // Alimenti
-        { category: 'Alimenti', pattern: 'supermercato', priority: 10 },
-        { category: 'Alimenti', pattern: 'conad', priority: 10 },
-        { category: 'Alimenti', pattern: 'famila', priority: 10 },
-        { category: 'Alimenti', pattern: 'pim', priority: 10 },
-        { category: 'Alimenti', pattern: 'macelleria', priority: 10 },
-        
-        // Trasporti
-        { category: 'Trasporti', pattern: 'benzina', priority: 10 },
-        { category: 'Trasporti', pattern: 'carburante', priority: 10 },
-        { category: 'Trasporti', pattern: 'eni', priority: 10 },
-        { category: 'Trasporti', pattern: 'tamoil', priority: 10 },
-        
-        // Casa
-        { category: 'Casa', pattern: 'affitto', priority: 10 },
-        { category: 'Casa', pattern: 'mutuo', priority: 5 }, // Higher priority
-        { category: 'Casa', pattern: 'condominio', priority: 5 },
-        { category: 'Casa', pattern: 'brico', priority: 10 },
-        
-        // Utenze
-        { category: 'Utenze', pattern: 'enel', priority: 10 },
-        { category: 'Utenze', pattern: 'tim', priority: 10 },
-        { category: 'Utenze', pattern: 'vodafone', priority: 10 },
-        { category: 'Utenze', pattern: 'wind', priority: 10 },
-        
-        // Salute
-        { category: 'Salute', pattern: 'farmacia', priority: 10 },
-        { category: 'Salute', pattern: 'medico', priority: 10 },
-        { category: 'Salute', pattern: 'ospedale', priority: 10 },
-        
-        // Ristorazione
-        { category: 'Ristorazione', pattern: 'ristorante', priority: 10 },
-        { category: 'Ristorazione', pattern: 'pizzeria', priority: 10 },
-        { category: 'Ristorazione', pattern: 'mcdonald', priority: 10 },
-        { category: 'Ristorazione', pattern: 'deliveroo', priority: 10 },
-        
-        // Abbigliamento
-        { category: 'Abbigliamento', pattern: 'zara', priority: 10 },
-        { category: 'Abbigliamento', pattern: 'h&m', priority: 10 },
-        { category: 'Abbigliamento', pattern: 'decathlon', priority: 10 },
-        
-        // Svago
-        { category: 'Svago', pattern: 'cinema', priority: 10 },
-        { category: 'Svago', pattern: 'teatro', priority: 10 },
-        
-        // Abbonamenti
-        { category: 'Abbonamenti', pattern: 'netflix', priority: 10 },
-        { category: 'Abbonamenti', pattern: 'spotify', priority: 10 },
-        { category: 'Abbonamenti', pattern: 'amazon prime', priority: 10 },
-        
-        // Spese Bancarie
-        { category: 'Spese Bancarie', pattern: 'commissioni', priority: 10 },
-        { category: 'Spese Bancarie', pattern: 'canone', priority: 10 },
-        { category: 'Spese Bancarie', pattern: 'bollo', priority: 10 },
-        
-        // Stipendio
-        { category: 'Stipendio', pattern: 'stipendio', priority: 10 },
-        { category: 'Stipendio', pattern: 'cedolino', priority: 10 },
-        { category: 'Stipendio', pattern: 'accredito stipendio', priority: 5 },
-        
-        // BancoPosta-specific patterns
-        
-        // Alimentari (BancoPosta)
-        { category: 'Alimenti', pattern: 'lidl', priority: 10 },
-        { category: 'Alimenti', pattern: 'global fish', priority: 10 },
-        { category: 'Alimenti', pattern: 'stazione frutta', priority: 10 },
-        
-        // Trasporti (BancoPosta)
-        { category: 'Trasporti', pattern: 'pedaggio autostradale', priority: 5 },
-        { category: 'Trasporti', pattern: 'telepedaggio', priority: 5 },
-        { category: 'Trasporti', pattern: 'mooneygo', priority: 10 },
-        { category: 'Trasporti', pattern: 'enerpetroli', priority: 10 },
-        
-        // Ristorazione (BancoPosta)
-        { category: 'Ristorazione', pattern: 'justeatitaly', priority: 10 },
-        { category: 'Ristorazione', pattern: 'bar melo', priority: 10 },
-        
-        // Casa (BancoPosta)
-        { category: 'Casa', pattern: 'cossuto', priority: 10 },
-        
-        // Abbonamenti (BancoPosta)
-        { category: 'Abbonamenti', pattern: 'paypal', priority: 15 }, // Lower priority, could be many things
-        
-        // Altro/Servizi (BancoPosta)
-        { category: 'Altro', pattern: 'poste roma', priority: 10 },
-        { category: 'Altro', pattern: 'mondadori', priority: 10 },
-        { category: 'Altro', pattern: 'tabacchi', priority: 10 },
-        { category: 'Altro', pattern: 'augustarello', priority: 10 },
-        { category: 'Altro', pattern: 'r.m.g. srl', priority: 10 },
-        
-        // Generic BancoPosta transaction types
-        { category: 'Altro', pattern: 'pagamento pos', priority: 20 }, // Very low priority, most generic
-        { category: 'Altro', pattern: 'prelievo up', priority: 15 },
-        { category: 'Altro', pattern: 'acqu.distrib.automati', priority: 10 }
+        // Single example rule
+        { category: 'Altro', pattern: 'esempio', priority: 10 }
       ];
       
       rules.forEach(rule => {
@@ -333,9 +256,23 @@ export function initializeDefaultCategories(): void {
       });
     });
     
+    // Execute the transaction
     transaction();
     
+    // Mark initialization as complete
+    db.prepare(`
+      UPDATE system_initialization 
+      SET categories_initialized = 1,
+          first_initialized_at = COALESCE(first_initialized_at, CURRENT_TIMESTAMP),
+          initialization_count = initialization_count + 1,
+          last_checked_at = CURRENT_TIMESTAMP
+      WHERE id = 1
+    `).run();
+    
+    console.warn('✅ Categories initialization completed successfully');
+    
   } catch (error) {
-    console.error('Error initializing categories:', error);
+    console.error('❌ Error initializing categories:', error);
+    // Don't set the flag if there was an error
   }
 }

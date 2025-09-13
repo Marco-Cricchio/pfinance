@@ -1,43 +1,28 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/database';
+import { resetAllBalances, db } from '@/lib/database';
 
 export async function POST() {
   try {
-    // Reset all balance-related data in a transaction
-    const resetTransaction = db.transaction(() => {
-      // Clear all file balances
-      const deleteFileBalances = db.prepare('DELETE FROM file_balances');
-      deleteFileBalances.run();
-      
-      // Clear all manual balance overrides (if they exist in a separate table)
-      // For now we'll assume balances are managed via file_balances table only
-      
-      // Reset current balance to 0.00 by clearing selected balance
-      const updateCurrentBalance = db.prepare(`
-        UPDATE sqlite_master SET sql = sql WHERE type = 'table'
-      `); // This is a no-op, just to maintain transaction structure
-      
-      return {
-        fileBalancesDeleted: deleteFileBalances.changes || 0
-      };
-    });
-    
-    const result = resetTransaction();
+    // Execute complete balance reset using helper function
+    const result = resetAllBalances();
     
     return NextResponse.json({
       success: true,
-      message: 'Tutti i dati relativi ai saldi sono stati resettati',
+      message: 'Reset completo dei saldi completato con successo',
       details: {
         fileBalancesDeleted: result.fileBalancesDeleted,
-        currentBalance: '0.00',
+        auditLogEntriesDeleted: result.auditLogEntriesDeleted,
+        accountBalanceReset: result.accountBalanceReset,
+        oldBalance: result.oldBalance,
+        newBalance: result.newBalance,
         resetTimestamp: new Date().toISOString()
       }
     });
 
   } catch (error) {
-    console.error('Errore durante il reset dei saldi:', error);
+    console.error('Errore durante il reset completo dei saldi:', error);
     return NextResponse.json(
-      { error: 'Errore durante il reset dei saldi' },
+      { error: 'Errore durante il reset completo dei saldi' },
       { status: 500 }
     );
   }

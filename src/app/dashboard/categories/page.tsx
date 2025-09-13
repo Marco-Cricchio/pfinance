@@ -351,6 +351,10 @@ export default function CategoriesPage() {
   const [showCategoryBulkActions, setShowCategoryBulkActions] = useState(false);
   const [showRuleBulkActions, setShowRuleBulkActions] = useState(false);
 
+  // Refs for managing indeterminate checkbox state
+  const categorySelectAllRef = React.useRef<HTMLInputElement>(null);
+  const ruleSelectAllRef = React.useRef<HTMLInputElement>(null);
+
   const handleSelectCategory = (categoryId: number) => {
     const newSelected = new Set(selectedCategories);
     if (newSelected.has(categoryId)) {
@@ -371,6 +375,32 @@ export default function CategoriesPage() {
     }
     setSelectedRules(newSelected);
     setShowRuleBulkActions(newSelected.size > 0);
+  };
+
+  const handleSelectAllCategories = () => {
+    if (selectedCategories.size === categories.length) {
+      // Deselect all
+      setSelectedCategories(new Set());
+      setShowCategoryBulkActions(false);
+    } else {
+      // Select all
+      const allCategoryIds = new Set(categories.map(cat => cat.id));
+      setSelectedCategories(allCategoryIds);
+      setShowCategoryBulkActions(true);
+    }
+  };
+
+  const handleSelectAllRules = () => {
+    if (selectedRules.size === rules.length) {
+      // Deselect all
+      setSelectedRules(new Set());
+      setShowRuleBulkActions(false);
+    } else {
+      // Select all
+      const allRuleIds = new Set(rules.map(rule => rule.id));
+      setSelectedRules(allRuleIds);
+      setShowRuleBulkActions(true);
+    }
   };
 
   const deleteBulkCategories = async () => {
@@ -722,6 +752,21 @@ export default function CategoriesPage() {
     }
   }, [filters, transactions, activeTab, applyFilters]);
 
+  // Update indeterminate state for select all checkboxes
+  React.useEffect(() => {
+    if (categorySelectAllRef.current) {
+      const isIndeterminate = selectedCategories.size > 0 && selectedCategories.size < categories.length;
+      categorySelectAllRef.current.indeterminate = isIndeterminate;
+    }
+  }, [selectedCategories, categories]);
+
+  React.useEffect(() => {
+    if (ruleSelectAllRef.current) {
+      const isIndeterminate = selectedRules.size > 0 && selectedRules.size < rules.length;
+      ruleSelectAllRef.current.indeterminate = isIndeterminate;
+    }
+  }, [selectedRules, rules]);
+
   if (loading) {
     return (
       <div className="container mx-auto py-8">
@@ -853,7 +898,24 @@ export default function CategoriesPage() {
               <CardHeader>
                 <div className="flex justify-between items-center">
                   <div>
-                    <CardTitle>Categorie Esistenti</CardTitle>
+                    <div className="flex items-center gap-3">
+                      <CardTitle>Categorie Esistenti</CardTitle>
+                      {categories.length > 0 && (
+                        <div className="flex items-center gap-2">
+                          <input
+                            ref={categorySelectAllRef}
+                            type="checkbox"
+                            checked={selectedCategories.size === categories.length && categories.length > 0}
+                            onChange={handleSelectAllCategories}
+                            className="w-4 h-4"
+                            title={selectedCategories.size === categories.length ? 'Deseleziona tutto' : 'Seleziona tutto'}
+                          />
+                          <span className="text-sm text-muted-foreground">
+                            Seleziona tutto
+                          </span>
+                        </div>
+                      )}
+                    </div>
                     <CardDescription>{categories.length} categorie totali</CardDescription>
                   </div>
                   {showCategoryBulkActions && (
@@ -1012,7 +1074,24 @@ export default function CategoriesPage() {
               <CardHeader>
                 <div className="flex justify-between items-center">
                   <div>
-                    <CardTitle>Regole Esistenti</CardTitle>
+                    <div className="flex items-center gap-3">
+                      <CardTitle>Regole Esistenti</CardTitle>
+                      {rules.length > 0 && (
+                        <div className="flex items-center gap-2">
+                          <input
+                            ref={ruleSelectAllRef}
+                            type="checkbox"
+                            checked={selectedRules.size === rules.length && rules.length > 0}
+                            onChange={handleSelectAllRules}
+                            className="w-4 h-4"
+                            title={selectedRules.size === rules.length ? 'Deseleziona tutto' : 'Seleziona tutto'}
+                          />
+                          <span className="text-sm text-muted-foreground">
+                            Seleziona tutto
+                          </span>
+                        </div>
+                      )}
+                    </div>
                     <CardDescription>{rules.length} regole totali</CardDescription>
                   </div>
                   {showRuleBulkActions && (

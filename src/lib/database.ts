@@ -157,25 +157,38 @@ try {
     
     // Create balance_audit_log table for tracking manual changes
     db.exec(`
-      CREATE TABLE IF NOT EXISTS balance_audit_log (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        old_balance REAL,
-        new_balance REAL,
-        change_reason TEXT, -- 'file_import', 'manual_override', 'calculation_correction'
-        changed_by TEXT DEFAULT 'system',
-        file_source TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      );
+    CREATE TABLE IF NOT EXISTS balance_audit_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      old_balance REAL,
+      new_balance REAL,
+      change_reason TEXT, -- 'file_import', 'manual_override', 'calculation_correction'
+      changed_by TEXT DEFAULT 'system',
+      file_source TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    
+    -- System initialization tracking table
+    CREATE TABLE IF NOT EXISTS system_initialization (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      categories_initialized BOOLEAN DEFAULT 0,
+      initialization_version TEXT DEFAULT '1.0',
+      first_initialized_at DATETIME,
+      last_checked_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      initialization_count INTEGER DEFAULT 0
+    );
+    
+    -- Insert default record if not exists
+    INSERT OR IGNORE INTO system_initialization (id) VALUES (1);
     `);
     
-    // Set initial balance to €8824.07 if still at default
+    // Keep initial balance at €1000.00 (no forced update)
     const currentBalance = db.prepare('SELECT balance FROM account_balance WHERE id = 1').get() as { balance: number } | undefined;
     if (currentBalance && currentBalance.balance === 1000.0) {
+      // Just set the file_source for tracking purposes, but keep balance at 1000.00
       db.exec(`
         UPDATE account_balance 
-        SET balance = 8824.07, 
-            file_source = 'initial_setup', 
-            is_manual_override = 1,
+        SET file_source = 'initial_setup', 
+            is_manual_override = 0,
             updated_at = CURRENT_TIMESTAMP 
         WHERE id = 1
       `);
@@ -183,7 +196,7 @@ try {
       // Log this change
       db.exec(`
         INSERT INTO balance_audit_log (old_balance, new_balance, change_reason, file_source)
-        VALUES (1000.0, 8824.07, 'initial_setup', 'initial_setup')
+        VALUES (NULL, 1000.0, 'initial_setup', 'initial_setup')
       `);
     }
     
@@ -202,12 +215,27 @@ try {
   }
   
   
-  // Initialize default categories and rules
-  import('./categorizer').then(({ initializeDefaultCategories }) => {
-    initializeDefaultCategories();
-  }).catch(error => {
-    console.error('Error importing categorizer:', error);
-  });
+  // Initialize default categories and rules with robust error handling
+  // Immediate execution with safety checks
+  import('./categorizer')
+    .then(({ initializeDefaultCategories }) => {
+      // Additional safety check before calling
+      const existingCategories = db.prepare('SELECT COUNT(*) as count FROM categories').get() as { count: number };
+      const initStatus = db.prepare(`
+        SELECT categories_initialized FROM system_initialization WHERE id = 1
+      `).get() as { categories_initialized: number } | undefined;
+      
+      // Only initialize if not already done
+      if (!initStatus?.categories_initialized && existingCategories.count === 0) {
+        console.warn('ℹ️ Starting categories initialization...');
+        initializeDefaultCategories();
+      } else {
+        console.warn('✓ Categories already initialized, skipping...');
+      }
+    })
+    .catch(error => {
+      console.error('❌ Error during categories initialization:', error);
+    });
 } catch (error) {
   console.error('❌ Errore inizializzazione database:', error);
 }
@@ -1130,6 +1158,70 @@ export function clearChatSession(sessionId: string): boolean {
   } catch (error) {
     console.error('Error clearing chat session:', error);
     return false;
+  }
+}
+
+// ============================================================================
+// BALANCE RESET FUNCTIONS
+// ============================================================================
+
+export interface BalanceResetResult {
+  fileBalancesDeleted: number;
+  auditLogEntriesDeleted: number;
+  accountBalanceReset: boolean;
+  oldBalance: number;
+  newBalance: number;
+}
+
+// Complete reset of all balance-related data
+export function resetAllBalances(): BalanceResetResult {
+  try {
+    const transaction = db.transaction(() => {
+      // Count records before deletion for reporting
+      const fileBalancesCount = db.prepare('SELECT COUNT(*) as count FROM file_balances').get() as { count: number };
+      const auditLogCount = db.prepare('SELECT COUNT(*) as count FROM balance_audit_log').get() as { count: number };
+      
+      // Get the old balance BEFORE resetting it
+      const currentBalanceInfo = db.prepare('SELECT balance FROM account_balance WHERE id = 1').get() as { balance: number } | undefined;
+      const oldBalance = currentBalanceInfo?.balance || 0;
+      
+      // Clear all file balances (removes all file-based balance history)
+      db.prepare('DELETE FROM file_balances').run();
+      
+      // Clear all balance audit log (removes all historical changes)
+      db.prepare('DELETE FROM balance_audit_log').run();
+      
+      // Reset the main account balance to 0.00 and clear all references
+      const resetAccountBalance = db.prepare(`
+        UPDATE account_balance 
+        SET balance = 0.00, 
+            balance_date = NULL, 
+            file_source = NULL,
+            is_manual_override = 0,
+            updated_at = CURRENT_TIMESTAMP 
+        WHERE id = 1
+      `);
+      const balanceResetResult = resetAccountBalance.run();
+      
+      // Insert initial audit log entry for the reset operation (after clearing old audit log)
+      db.prepare(`
+        INSERT INTO balance_audit_log (old_balance, new_balance, change_reason, changed_by)
+        VALUES (?, 0.00, 'complete_reset', 'user')
+      `).run(oldBalance);
+      
+      return {
+        fileBalancesDeleted: fileBalancesCount.count,
+        auditLogEntriesDeleted: auditLogCount.count,
+        accountBalanceReset: balanceResetResult.changes > 0,
+        oldBalance: oldBalance,
+        newBalance: 0.00
+      };
+    });
+    
+    return transaction();
+  } catch (error) {
+    console.error('Error resetting all balances:', error);
+    throw error;
   }
 }
 
