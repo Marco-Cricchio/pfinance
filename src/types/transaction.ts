@@ -9,6 +9,7 @@ export interface Transaction {
   balance?: number;
   manual_category_id?: number | null;
   is_manual_override?: boolean;
+  operationType?: string; // Type of operation from PDF (PAGAMENTO POS, BONIFICO, etc.)
 }
 
 export interface UploadedFile {

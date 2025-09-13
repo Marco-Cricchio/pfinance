@@ -1,16 +1,15 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs } from '@/components/ui/tabs';
 import { Pagination } from '@/components/ui/pagination';
-import { Plus, Edit2, Trash2, Save, X, Eye, Search, Check, ChevronDown } from 'lucide-react';
+import { Plus, Edit2, Trash2, Save, X, Eye, Search, ChevronDown, ChevronUp, Filter, AlertTriangle } from 'lucide-react';
 
 interface Category {
   id: number;
@@ -43,12 +42,40 @@ interface PreviewItem {
   color?: string;
 }
 
+interface TransactionManagementItem {
+  id: string;
+  date: string;
+  amount: number;
+  description: string;
+  category: string;
+  type: 'income' | 'expense';
+}
+
 export default function CategoriesPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [rules, setRules] = useState<CategoryRule[]>([]);
   const [preview, setPreview] = useState<PreviewItem[]>([]);
   const [filteredPreview, setFilteredPreview] = useState<PreviewItem[]>([]);
   const [activeTab, setActiveTab] = useState('categories');
+  
+  // Stati per la gestione transazioni
+  const [transactions, setTransactions] = useState<TransactionManagementItem[]>([]);
+  const [filteredTransactions, setFilteredTransactions] = useState<TransactionManagementItem[]>([]);
+  const [selectedTransactions, setSelectedTransactions] = useState<Set<string>>(new Set());
+  const [showDeletePreview, setShowDeletePreview] = useState(false);
+  const [previewTransactions, setPreviewTransactions] = useState<TransactionManagementItem[]>([]);
+  const [isFiltersCollapsed, setIsFiltersCollapsed] = useState(true);
+  
+  // Stati per filtri avanzati
+  const [filters, setFilters] = useState({
+    categories: [] as string[],
+    dateFrom: '',
+    dateTo: '',
+    type: 'all' as 'all' | 'income' | 'expense',
+    amountMin: '',
+    amountMax: '',
+    description: ''
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -244,20 +271,24 @@ export default function CategoriesPage() {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [categoriesRes, rulesRes, previewRes] = await Promise.all([
+      const [categoriesRes, rulesRes, previewRes, transactionsRes] = await Promise.all([
         fetch('/api/categories'),
         fetch('/api/category-rules'),
-        fetch('/api/category-rules/preview')
+        fetch('/api/category-rules/preview'),
+        fetch('/api/transactions')
       ]);
       
       const categoriesData = await categoriesRes.json();
       const rulesData = await rulesRes.json();
       const previewData = await previewRes.json();
+      const transactionsData = await transactionsRes.json();
       
       setCategories(categoriesData.categories || []);
       setRules(rulesData.rules || []);
       setPreview(previewData.preview || []);
       setFilteredPreview(previewData.preview || []);
+      setTransactions(transactionsData.transactions || []);
+      setFilteredTransactions(transactionsData.transactions || []);
     } catch (error) {
       setError('Errore durante il caricamento dei dati');
     } finally {
@@ -433,6 +464,180 @@ export default function CategoriesPage() {
     }
   };
 
+  // Funzioni per la gestione delle transazioni
+  const applyFilters = useCallback(() => {
+    let filtered = [...transactions];
+
+    if (filters.categories.length > 0) {
+      filtered = filtered.filter(t => filters.categories.includes(t.category || 'Altro'));
+    }
+
+    if (filters.dateFrom) {
+      filtered = filtered.filter(t => t.date >= filters.dateFrom);
+    }
+
+    if (filters.dateTo) {
+      filtered = filtered.filter(t => t.date <= filters.dateTo);
+    }
+
+    if (filters.type !== 'all') {
+      filtered = filtered.filter(t => t.type === filters.type);
+    }
+
+    if (filters.amountMin) {
+      const minAmount = parseFloat(filters.amountMin);
+      if (!isNaN(minAmount)) {
+        filtered = filtered.filter(t => Math.abs(t.amount) >= minAmount);
+      }
+    }
+
+    if (filters.amountMax) {
+      const maxAmount = parseFloat(filters.amountMax);
+      if (!isNaN(maxAmount)) {
+        filtered = filtered.filter(t => Math.abs(t.amount) <= maxAmount);
+      }
+    }
+
+    if (filters.description) {
+      const searchTerm = filters.description.toLowerCase();
+      filtered = filtered.filter(t => t.description.toLowerCase().includes(searchTerm));
+    }
+
+    setFilteredTransactions(filtered);
+    setSelectedTransactions(new Set());
+  }, [transactions, filters]);
+
+  const clearFilters = () => {
+    setFilters({
+      categories: [],
+      dateFrom: '',
+      dateTo: '',
+      type: 'all',
+      amountMin: '',
+      amountMax: '',
+      description: ''
+    });
+    setFilteredTransactions([...transactions]);
+  };
+
+  const handleTransactionSelect = (transactionId: string) => {
+    const newSelected = new Set(selectedTransactions);
+    if (newSelected.has(transactionId)) {
+      newSelected.delete(transactionId);
+    } else {
+      newSelected.add(transactionId);
+    }
+    setSelectedTransactions(newSelected);
+  };
+
+  const handleSelectAllTransactions = () => {
+    if (selectedTransactions.size === filteredTransactions.length) {
+      setSelectedTransactions(new Set());
+    } else {
+      setSelectedTransactions(new Set(filteredTransactions.map(t => t.id)));
+    }
+  };
+
+  const previewDeletion = async () => {
+    try {
+      const response = await fetch('/api/transactions/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'preview',
+          filters: {
+            ...filters,
+            categories: filters.categories.length > 0 ? filters.categories : undefined
+          }
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setPreviewTransactions(data.transactions);
+        setShowDeletePreview(true);
+      } else {
+        const data = await response.json();
+        setError(data.error || 'Errore durante il preview');
+      }
+    } catch (error) {
+      setError('Errore di rete durante il preview');
+    }
+  };
+
+  const executeSelectedDeletion = async () => {
+    if (selectedTransactions.size === 0) {
+      setError('Seleziona almeno una transazione da cancellare');
+      return;
+    }
+
+    if (!confirm(`Sei sicuro di voler cancellare ${selectedTransactions.size} transazioni selezionate? Questa azione non può essere annullata.`)) {
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/transactions/delete', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          transactionIds: Array.from(selectedTransactions)
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setSuccess(`${data.deletedCount} transazioni cancellate con successo`);
+        setSelectedTransactions(new Set());
+        loadData(); // Ricarica i dati
+      } else {
+        const data = await response.json();
+        setError(data.error || 'Errore durante la cancellazione');
+      }
+    } catch (error) {
+      setError('Errore di rete durante la cancellazione');
+    }
+  };
+
+  const executeFilteredDeletion = async () => {
+    if (!confirm(`Sei sicuro di voler cancellare ${previewTransactions.length} transazioni che corrispondono ai filtri? Questa azione non può essere annullata.`)) {
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/transactions/delete', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          filters: {
+            ...filters,
+            categories: filters.categories.length > 0 ? filters.categories : undefined
+          }
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setSuccess(`${data.deletedCount} transazioni cancellate con successo`);
+        setShowDeletePreview(false);
+        setPreviewTransactions([]);
+        clearFilters();
+        loadData(); // Ricarica i dati
+      } else {
+        const data = await response.json();
+        setError(data.error || 'Errore durante la cancellazione');
+      }
+    } catch (error) {
+      setError('Errore di rete durante la cancellazione');
+    }
+  };
+
+  // Effect per applicare i filtri quando cambiano
+  React.useEffect(() => {
+    if (activeTab === 'management') {
+      applyFilters();
+    }
+  }, [filters, transactions, activeTab, applyFilters]);
+
   if (loading) {
     return (
       <div className="container mx-auto py-8">
@@ -495,6 +700,16 @@ export default function CategoriesPage() {
             >
               Anteprima
             </button>
+            <button
+              onClick={() => setActiveTab('management')}
+              className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'management'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Gestione Transazioni
+            </button>
           </nav>
         </div>
 
@@ -522,7 +737,7 @@ export default function CategoriesPage() {
                     <select
                       id="category-type"
                       value={newCategory.type}
-                      onChange={(e) => setNewCategory({...newCategory, type: e.target.value as any})}
+                        onChange={(e) => setNewCategory({...newCategory, type: e.target.value as 'income' | 'expense' | 'both'})}
                       className="w-full p-2 border bg-background rounded-md"
                     >
                       <option value="expense">Spesa</option>
@@ -568,7 +783,7 @@ export default function CategoriesPage() {
                           />
                           <select
                             value={editingCategory.type}
-                            onChange={(e) => setEditingCategory({...editingCategory, type: e.target.value as any})}
+                            onChange={(e) => setEditingCategory({...editingCategory, type: e.target.value as 'income' | 'expense' | 'both'})}
                             className="p-2 border bg-background rounded-md"
                           >
                             <option value="expense">Spesa</option>
@@ -654,7 +869,7 @@ export default function CategoriesPage() {
                     <select
                       id="rule-match-type"
                       value={newRule.matchType}
-                      onChange={(e) => setNewRule({...newRule, matchType: e.target.value as any})}
+                      onChange={(e) => setNewRule({...newRule, matchType: e.target.value as 'contains' | 'startsWith' | 'endsWith'})}
                       className="w-full p-2 border bg-background rounded-md"
                     >
                       <option value="contains">Contiene</option>
@@ -707,7 +922,7 @@ export default function CategoriesPage() {
                           />
                           <select
                             value={editingRule.match_type}
-                            onChange={(e) => setEditingRule({...editingRule, match_type: e.target.value as any})}
+                            onChange={(e) => setEditingRule({...editingRule, match_type: e.target.value as 'contains' | 'startsWith' | 'endsWith'})}
                             className="p-2 border bg-background rounded-md"
                           >
                             <option value="contains">Contiene</option>
@@ -970,6 +1185,307 @@ export default function CategoriesPage() {
               />
             </CardContent>
           </Card>
+        )}
+
+        {/* Management Tab */}
+        {activeTab === 'management' && (
+          <div className="space-y-6">
+            {/* Filtri Avanzati */}
+            <Card>
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <Filter className="h-5 w-5" />
+                      Filtri Avanzati
+                    </CardTitle>
+                    <CardDescription>
+                      Filtra le transazioni per data, categoria, importo e tipo
+                    </CardDescription>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <div className="text-sm text-muted-foreground">
+                      {filteredTransactions.length} di {transactions.length} transazioni
+                    </div>
+                    <button
+                      onClick={clearFilters}
+                      className="flex items-center gap-1 text-sm text-muted-foreground hover:text-destructive transition-colors"
+                    >
+                      <X className="h-3 w-3" />
+                      Cancella filtri
+                    </button>
+                    <button
+                      onClick={() => setIsFiltersCollapsed(!isFiltersCollapsed)}
+                      className="flex items-center gap-1 text-sm text-muted-foreground hover:text-primary transition-colors"
+                    >
+                      {isFiltersCollapsed ? (
+                        <>
+                          <ChevronDown className="h-4 w-4" />
+                          Espandi
+                        </>
+                      ) : (
+                        <>
+                          <ChevronUp className="h-4 w-4" />
+                          Comprimi
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </CardHeader>
+              <div 
+                className={`overflow-hidden transition-all duration-300 ease-in-out ${
+                  isFiltersCollapsed ? 'max-h-0 opacity-0' : 'max-h-96 opacity-100'
+                }`}
+              >
+                <CardContent className="space-y-4 pt-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {/* Filtro Data */}
+                    <div>
+                      <Label>Data da</Label>
+                      <Input
+                        type="date"
+                        value={filters.dateFrom}
+                        onChange={(e) => setFilters({...filters, dateFrom: e.target.value})}
+                      />
+                    </div>
+                    <div>
+                      <Label>Data a</Label>
+                      <Input
+                        type="date"
+                        value={filters.dateTo}
+                        onChange={(e) => setFilters({...filters, dateTo: e.target.value})}
+                      />
+                    </div>
+                    {/* Filtro Importo */}
+                    <div>
+                      <Label>Importo minimo</Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        placeholder="0.00"
+                        value={filters.amountMin}
+                        onChange={(e) => setFilters({...filters, amountMin: e.target.value})}
+                      />
+                    </div>
+                    <div>
+                      <Label>Importo massimo</Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        placeholder="999999.99"
+                        value={filters.amountMax}
+                        onChange={(e) => setFilters({...filters, amountMax: e.target.value})}
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {/* Filtro Tipo */}
+                    <div>
+                      <Label>Tipo transazione</Label>
+                      <select
+                        value={filters.type}
+                        onChange={(e) => setFilters({...filters, type: e.target.value as 'all' | 'income' | 'expense'})}
+                        className="w-full p-2 border bg-background rounded-md"
+                      >
+                        <option value="all">Tutti</option>
+                        <option value="income">Entrate</option>
+                        <option value="expense">Spese</option>
+                      </select>
+                    </div>
+                    {/* Filtro Categorie */}
+                    <div>
+                      <Label>Categorie</Label>
+                      <select
+                        multiple
+                        value={filters.categories}
+                        onChange={(e) => {
+                          const selected = Array.from(e.target.selectedOptions, option => option.value);
+                          setFilters({...filters, categories: selected});
+                        }}
+                        className="w-full p-2 border bg-background rounded-md"
+                        size={3}
+                      >
+                        {categories.map((cat) => (
+                          <option key={cat.id} value={cat.name}>{cat.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    {/* Filtro Descrizione */}
+                    <div>
+                      <Label>Descrizione contiene</Label>
+                      <Input
+                        placeholder="Cerca nel testo..."
+                        value={filters.description}
+                        onChange={(e) => setFilters({...filters, description: e.target.value})}
+                      />
+                    </div>
+                  </div>
+                </CardContent>
+              </div>
+            </Card>
+
+            {/* Azioni Bulk */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Trash2 className="h-5 w-5" />
+                  Operazioni di Cancellazione
+                </CardTitle>
+                <CardDescription>
+                  Cancella transazioni selezionate o in base ai filtri
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-wrap items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={selectedTransactions.size === filteredTransactions.length && filteredTransactions.length > 0}
+                      onChange={handleSelectAllTransactions}
+                      className="rounded border"
+                    />
+                    <Label className="text-sm">
+                      {selectedTransactions.size === filteredTransactions.length && filteredTransactions.length > 0
+                        ? 'Deseleziona tutto'
+                        : 'Seleziona tutto'}
+                    </Label>
+                    {selectedTransactions.size > 0 && (
+                      <Badge variant="secondary">{selectedTransactions.size} selezionate</Badge>
+                    )}
+                  </div>
+                  
+                  <div className="flex items-center gap-2 ml-auto">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={previewDeletion}
+                      disabled={!Object.values(filters).some(v => Array.isArray(v) ? v.length > 0 : v !== '' && v !== 'all')}
+                    >
+                      <Eye className="h-4 w-4 mr-2" />
+                      Preview Filtri
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={executeSelectedDeletion}
+                      disabled={selectedTransactions.size === 0}
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Cancella Selezionate ({selectedTransactions.size})
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Preview Cancellazione */}
+            {showDeletePreview && (
+              <Card className="border-destructive">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-destructive">
+                    <AlertTriangle className="h-5 w-5" />
+                    Preview Cancellazione Filtrata
+                  </CardTitle>
+                  <CardDescription>
+                    Le seguenti {previewTransactions.length} transazioni verrebbero cancellate:
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2 max-h-64 overflow-y-auto mb-4">
+                    {previewTransactions.map((transaction) => (
+                      <div key={transaction.id} className="flex items-center justify-between p-2 border rounded">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-3 h-3 rounded-full ${
+                            transaction.type === 'income' ? 'bg-green-500' : 'bg-red-500'
+                          }`} />
+                          <span className="text-sm">{new Date(transaction.date).toLocaleDateString('it-IT')}</span>
+                          <code className="text-sm">{transaction.description}</code>
+                          <Badge variant="outline">{transaction.category}</Badge>
+                        </div>
+                        <span className={`font-medium ${
+                          transaction.type === 'income' ? 'text-green-600' : 'text-red-600'
+                        }`}>
+                          {transaction.type === 'income' ? '+' : '-'}€{Math.abs(transaction.amount).toFixed(2)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setShowDeletePreview(false);
+                        setPreviewTransactions([]);
+                      }}
+                    >
+                      Annulla
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      onClick={executeFilteredDeletion}
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Conferma Cancellazione ({previewTransactions.length})
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Lista Transazioni */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Transazioni ({filteredTransactions.length})</CardTitle>
+                <CardDescription>
+                  Seleziona le transazioni da gestire
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2 max-h-96 overflow-y-auto">
+                  {filteredTransactions.map((transaction) => (
+                    <div key={transaction.id} className="flex items-center gap-3 p-3 border rounded-lg hover:bg-muted/50 transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={selectedTransactions.has(transaction.id)}
+                        onChange={() => handleTransactionSelect(transaction.id)}
+                        className="rounded border"
+                      />
+                      
+                      <div className={`w-3 h-3 rounded-full ${
+                        transaction.type === 'income' ? 'bg-green-500' : 'bg-red-500'
+                      }`} />
+                      
+                      <span className="text-sm font-mono w-20">
+                        {new Date(transaction.date).toLocaleDateString('it-IT')}
+                      </span>
+                      
+                      <code className="text-sm flex-1 min-w-0">{transaction.description}</code>
+                      
+                      <Badge 
+                        variant="outline"
+                        className="shrink-0"
+                      >
+                        {transaction.category || 'Altro'}
+                      </Badge>
+                      
+                      <span className={`font-medium text-sm shrink-0 ${
+                        transaction.type === 'income' ? 'text-green-600' : 'text-red-600'
+                      }`}>
+                        {transaction.type === 'income' ? '+' : '-'}€{Math.abs(transaction.amount).toFixed(2)}
+                      </span>
+                    </div>
+                  ))}
+                  {filteredTransactions.length === 0 && (
+                    <div className="text-center text-muted-foreground py-8">
+                      Nessuna transazione trovata per i filtri selezionati
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         )}
       </Tabs>
     </div>

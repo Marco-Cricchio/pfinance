@@ -3,6 +3,12 @@ import { Transaction } from '@/types/transaction';
 import * as XLSX from 'xlsx';
 import { insertTransactions, getParsedData } from '@/lib/database';
 import { categorizeTransaction } from '@/lib/categorizer';
+import { 
+  formatItalianDate, 
+  parseItalianAmount, 
+  cleanDescription,
+  generateTransactionId 
+} from '@/lib/parsingUtils';
 
 export async function POST(request: NextRequest) {
   try {
@@ -165,8 +171,8 @@ export async function POST(request: NextRequest) {
       }
       
       if (amount > 0.01 && mainDate && description) {
-        // Genera un ID più unico basato sul contenuto della transazione
-        const uniqueId = `xlsx-${mainDate}-${amount}-${description.substring(0, 20).replace(/[^a-zA-Z0-9]/g, '')}-${index}`;
+        // Generate unique ID using shared utility
+        const uniqueId = generateTransactionId(mainDate, amount, cleanDescription(description), index, 'xlsx');
         
         const transaction: Transaction = {
           id: uniqueId,
@@ -213,65 +219,6 @@ export async function POST(request: NextRequest) {
   }
 }
 
-function formatItalianDate(dateStr: string): string {
-  // Rimuovi spazi extra
-  const cleanDateStr = dateStr.trim();
-  
-  // Se è un numero Excel, convertilo in data
-  if (!isNaN(Number(cleanDateStr))) {
-    const excelDate = new Date((Number(cleanDateStr) - 25569) * 86400 * 1000);
-    return excelDate.toISOString().split('T')[0];
-  }
-  
-  // Formato italiano: DD/MM/YYYY
-  const italianDateMatch = cleanDateStr.match(/(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})/);
-  if (italianDateMatch) {
-    let [, day, month, year] = italianDateMatch;
-    
-    // Gestisce anni a 2 cifre
-    if (year.length === 2) {
-      const currentYear = new Date().getFullYear();
-      const currentCentury = Math.floor(currentYear / 100) * 100;
-      const twoDigitYear = parseInt(year);
-      year = String(twoDigitYear > 50 ? currentCentury - 100 + twoDigitYear : currentCentury + twoDigitYear);
-    }
-    
-    // Assicura che giorno e mese abbiano 2 cifre
-    day = day.padStart(2, '0');
-    month = month.padStart(2, '0');
-    
-    return `${year}-${month}-${day}`;
-  }
-  
-  return new Date().toISOString().split('T')[0];
-}
-
-function parseItalianAmount(amountStr: string): number {
-  if (!amountStr) return 0;
-  
-  // Rimuovi caratteri non numerici eccetto virgola, punto e segno meno
-  let cleanAmount = amountStr.replace(/[^\d,.-]/g, '');
-  
-  // Gestisce formato italiano: 1.234,56 -> 1234.56
-  if (cleanAmount.includes(',')) {
-    // Se contiene sia punto che virgola, il punto è il separatore delle migliaia
-    if (cleanAmount.includes('.') && cleanAmount.includes(',')) {
-      cleanAmount = cleanAmount.replace(/\./g, '').replace(',', '.');
-    } else {
-      // Solo virgola = separatore decimale
-      cleanAmount = cleanAmount.replace(',', '.');
-    }
-  }
-  
-  const amount = parseFloat(cleanAmount);
-  return isNaN(amount) ? 0 : Math.abs(amount);
-}
-
-function cleanDescription(description: string): string {
-  if (!description) return 'Transazione Excel';
-  
-  // Rimuovi spazi extra e caratteri di controllo
-  return description.trim().replace(/\s+/g, ' ') || 'Transazione Excel';
-}
+// Utility functions moved to shared parsingUtils.ts
 
 // Categorization logic moved to centralized categorizer engine

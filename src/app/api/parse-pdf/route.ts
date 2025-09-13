@@ -1,62 +1,297 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Transaction } from '@/types/transaction';
+import { insertTransactions, getParsedData } from '@/lib/database';
+import { categorizeTransaction } from '@/lib/categorizer';
+import {
+  parseTransactionLine, 
+  getMainTransactionDate, 
+  parseItalianAmount, 
+  generateTransactionId,
+  cleanDescription,
+  formatItalianDate,
+  determineTransactionType,
+  TransactionPattern
+} from '@/lib/parsingUtils';
+
+// Dynamic import for pdfjs-dist to handle ESM in Node.js environment
+async function importPdfJs() {
+  try {
+    // Use legacy build for Node.js compatibility
+    const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
+    
+    // Set worker to the distributed worker for Node.js environment
+    const path = require('path');
+    const workerPath = path.join(process.cwd(), 'node_modules', 'pdfjs-dist', 'legacy', 'build', 'pdf.worker.mjs');
+    pdfjsLib.GlobalWorkerOptions.workerSrc = `file://${workerPath}`;
+    
+    return pdfjsLib;
+  } catch (error) {
+    console.error('Failed to import pdfjs-dist:', error);
+    throw new Error('PDF processing library not available');
+  }
+}
+
+// Helper functions have been moved to src/lib/parsingUtils.ts
+// and are now imported at the top of this file
+
+/**
+ * Extracts operation type from transaction description
+ */
+function extractOperationType(description: string): string {
+  if (!description) return '';
+  
+  const desc = description.toUpperCase();
+  
+  // Look for operation type at the beginning of description
+  if (desc.includes('POSTAGIRO')) return 'POSTAGIRO';
+  if (desc.includes('BONIFICO')) return 'BONIFICO';
+  if (desc.includes('PAGAMENTO POS')) return 'PAGAMENTO POS';
+  if (desc.includes('PAGAMENTO')) return 'PAGAMENTO';
+  if (desc.includes('ADDEBITO DIRETTO')) return 'ADDEBITO DIRETTO';
+  if (desc.includes('ADDEBITO')) return 'ADDEBITO';
+  if (desc.includes('PRELIEVO')) return 'PRELIEVO';
+  if (desc.includes('ACCR')) return 'ACCR';
+  if (desc.includes('ACCREDITO')) return 'ACCREDITO';
+  if (desc.includes('F24')) return 'F24';
+  if (desc.includes('STIPENDIO')) return 'STIPENDIO';
+  
+  return '';
+}
 
 export async function POST(request: NextRequest) {
   try {
+    console.log('=== PDF Parse API Called ===');
+    
     const formData = await request.formData();
     const file = formData.get('file') as File;
+    
+    console.log('File received:', file ? file.name : 'NO FILE');
+    console.log('File size:', file ? file.size : 'N/A');
+    console.log('File type:', file ? file.type : 'N/A');
     
     if (!file || !file.name.endsWith('.pdf')) {
       return NextResponse.json({ error: 'File PDF richiesto' }, { status: 400 });
     }
 
-    // Temporarily return error - PDF parsing not implemented yet
-    return NextResponse.json({ 
-      error: 'Il parsing dei file PDF non è ancora implementato. Si prega di utilizzare file CSV o Excel.' 
-    }, { status: 400 });
+    // Check if file is too small (likely corrupted)
+    if (file.size < 1000) {
+      return NextResponse.json({ error: 'File PDF troppo piccolo o corrotto' }, { status: 400 });
+    }
 
-    // TODO: Implement PDF parsing when pdfjs-dist is properly configured
+    console.log('Reading PDF buffer...');
+    const buffer = await file.arrayBuffer();
+    const data = new Uint8Array(buffer);
     
-    const lines = text.split('\n').filter(line => line.trim());
+    console.log('Importing PDF.js...');
+    const pdfjsLib = await importPdfJs();
     
-    lines.forEach((line, index) => {
-      // Regex più robusta per trovare importi e date
-      const amountMatches = line.match(/[-+]?\d{1,3}(?:[.,]\d{3})*[.,]?\d{0,2}/g);
-      const dateMatches = line.match(/\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}/g);
+    console.log('Loading PDF document...');
+    const pdf = await pdfjsLib.getDocument({ data }).promise;
+    console.log('PDF loaded successfully, pages:', pdf.numPages);
+    
+    let fullText = '';
+    
+    // Extract text from all pages with better layout preservation and column detection
+    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+      console.log(`Processing page ${pageNum}/${pdf.numPages}...`);
+      const page = await pdf.getPage(pageNum);
+      const textContent = await page.getTextContent();
       
-      if (amountMatches && dateMatches && amountMatches.length > 0) {
-        const amountStr = amountMatches[amountMatches.length - 1];
-        const amount = parseFloat(amountStr.replace(/[,\.]/g, match => match === ',' ? '.' : match).replace(/[^\d.-]/g, ''));
+      // Group items by line (Y position) and sort by X position within each line
+      const lineGroups = new Map();
+      
+      for (let i = 0; i < textContent.items.length; i++) {
+        const item = textContent.items[i] as any;
+        const currentY = Math.round(item.transform[5]); // Y position (rounded to group nearby items)
+        const currentX = item.transform[4]; // X position
         
-        if (!isNaN(amount) && Math.abs(amount) > 0.01) {
-          const date = formatDate(dateMatches[0]);
-          const description = extractDescription(line, dateMatches[0], amountStr);
-          const uniqueId = `pdf-${date}-${Math.abs(amount)}-${description.substring(0, 20).replace(/[^a-zA-Z0-9]/g, '')}-${index}`;
+        if (!lineGroups.has(currentY)) {
+          lineGroups.set(currentY, []);
+        }
+        
+        lineGroups.get(currentY).push({
+          text: item.str,
+          x: currentX,
+          y: currentY
+        });
+      }
+      
+      // Build text line by line, preserving column structure
+      let pageText = '';
+      const sortedYPositions = Array.from(lineGroups.keys()).sort((a, b) => b - a); // Top to bottom
+      
+      for (const yPos of sortedYPositions) {
+        const lineItems = lineGroups.get(yPos).sort((a, b) => a.x - b.x); // Left to right
+        
+        let lineText = '';
+        let lastX = null;
+        
+        for (const item of lineItems) {
+          // Add extra spaces for significant X gaps (column separations)
+          if (lastX !== null && item.x - lastX > 50) {
+            lineText += '   '; // Column separator
+          }
+          
+          lineText += item.text + ' ';
+          lastX = item.x;
+        }
+        
+        if (lineText.trim()) {
+          pageText += lineText.trim() + '\n';
+        }
+      }
+      
+      fullText += pageText + '\n';
+    }
+    
+    console.log('PDF text extraction complete, processing transactions...');
+    
+    // Split text into lines
+    const lines = fullText.split('\n').filter(line => line.trim().length > 0);
+    
+    // Pattern to identify dates
+    const datePattern = /\b(\d{2})\/(\d{2})\/(\d{2})\b/g;
+    
+    const transactions: Transaction[] = [];
+    let currentTransaction = null;
+    let lineNumber = 0;
+    
+    console.log(`Processing ${lines.length} lines of text...`);
+    
+    for (const line of lines) {
+      lineNumber++;
+      const trimmedLine = line.trim();
+      
+      // Skip empty lines or irrelevant ones
+      if (!trimmedLine || 
+          trimmedLine.includes('SALDO INIZIALE') ||
+          trimmedLine.includes('TOTALE USCITE') ||
+          trimmedLine.includes('TOTALE ENTRATE') ||
+          trimmedLine.includes('SALDO FINALE') ||
+          trimmedLine.includes('CRICCHIO MARCO') ||
+          trimmedLine.includes('Pag.')) {
+        continue;
+      }
+      
+      // Find all dates in the line
+      const dates = [...trimmedLine.matchAll(datePattern)];
+      
+      if (dates.length >= 2) {
+        // If we have a previous transaction, save it
+        if (currentTransaction) {
+          const cleanedDescription = cleanDescription(currentTransaction.description);
+          
+          // Extract operation type from description for better classification
+          const operationType = extractOperationType(currentTransaction.description);
+          let transactionType = determineTransactionType(operationType, cleanedDescription);
+          
+          
+          // Trust the semantic analysis of operation type and description
+          
+          const dataValuta = formatItalianDate(currentTransaction.dataValuta);
+          const uniqueId = generateTransactionId(dataValuta, currentTransaction.amount, cleanedDescription, transactions.length, 'pdf');
           
           const transaction: Transaction = {
             id: uniqueId,
-            date: date,
-            amount: Math.abs(amount),
-            description: description,
-            category: categorizeTransaction(line),
-            type: amount >= 0 ? 'income' : 'expense',
+            date: dataValuta, // Use Data Valuta as the main date
+            dataValuta: dataValuta,
+            amount: currentTransaction.amount,
+            description: cleanedDescription,
+            category: categorizeTransaction({
+              id: uniqueId,
+              date: dataValuta,
+              amount: currentTransaction.amount,
+              description: cleanedDescription,
+              type: transactionType,
+              is_manual_override: false,
+              manual_category_id: null
+            } as Transaction),
+            type: transactionType
           };
           
           transactions.push(transaction);
+        }
+        
+        // Start a new transaction
+        const dataContabile = dates[0][0]; // First date (accounting date)
+        const dataValuta = dates[1][0];    // Second date (value date)
+        
+        // Look for amount after the second date
+        const afterSecondDate = trimmedLine.substring(dates[1].index + dates[1][0].length).trim();
+        const amountMatch = afterSecondDate.match(/^(\d{1,3}(?:\.\d{3})*,\d{2}|\d+,\d{2}|\d+)/);
+        
+        if (amountMatch) {
+          const amount = parseItalianAmount(amountMatch[1]);
+          const restOfLine = afterSecondDate.substring(amountMatch.index + amountMatch[0].length).trim();
           
-          if (transaction.type === 'income') {
-            totalIncome += transaction.amount;
-          } else {
-            totalExpenses += transaction.amount;
+          currentTransaction = {
+            dataContabile: dataContabile,
+            dataValuta: dataValuta,
+            amount: amount,
+            description: restOfLine
+          };
+          
+        } else {
+          // If no amount found, consider the line as continuation
+          if (currentTransaction) {
+            currentTransaction.description += ' ' + trimmedLine;
           }
         }
+      } else if (currentTransaction && dates.length === 0) {
+        // Continue the description of the current transaction if no dates
+        currentTransaction.description += ' ' + trimmedLine;
       }
-    });
+    }
     
-    // Salva le transazioni nel database (evita automaticamente i duplicati)
+    // Save the last transaction if present
+    if (currentTransaction) {
+      const cleanedDescription = cleanDescription(currentTransaction.description);
+      
+      // Extract operation type from description for better classification
+      const operationType = extractOperationType(currentTransaction.description);
+      let transactionType = determineTransactionType(operationType, cleanedDescription);
+      
+      
+      // Trust the semantic analysis of operation type and description
+      
+      const dataValuta = formatItalianDate(currentTransaction.dataValuta);
+      const uniqueId = generateTransactionId(dataValuta, currentTransaction.amount, cleanedDescription, transactions.length, 'pdf');
+      
+      const transaction: Transaction = {
+        id: uniqueId,
+        date: dataValuta, // Use Data Valuta as the main date
+        dataValuta: dataValuta,
+        amount: currentTransaction.amount,
+        description: cleanedDescription,
+        category: categorizeTransaction({
+          id: uniqueId,
+          date: dataValuta,
+          amount: currentTransaction.amount,
+          description: cleanedDescription,
+          type: transactionType,
+          is_manual_override: false,
+          manual_category_id: null
+        } as Transaction),
+        type: transactionType
+      };
+      
+      transactions.push(transaction);
+    }
+    
+    console.log(`Parsing complete: ${transactions.length} transactions found`);
+    
+    if (transactions.length === 0) {
+      return NextResponse.json({ error: 'Nessuna transazione trovata nel PDF. Verificare che il formato sia supportato.' }, { status: 400 });
+    }
+    
+    console.log(`Saving ${transactions.length} transactions to database...`);
+    
+    // Save transactions to database (automatically avoids duplicates)
     const { inserted, duplicates } = insertTransactions(transactions);
     
-    // Recupera tutti i dati dal database (incluse le transazioni esistenti)
+    console.log(`Database save complete: ${inserted} new transactions, ${duplicates} duplicates ignored`);
+    
+    // Retrieve all data from database (including existing transactions)
     const allData = getParsedData();
     
     return NextResponse.json({
@@ -70,136 +305,10 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Errore parsing PDF:', error);
     return NextResponse.json(
-      { error: 'Errore durante l\'elaborazione del PDF' }, 
+      { error: `Errore durante l'elaborazione del PDF: ${error.message}` }, 
       { status: 500 }
     );
   }
 }
 
-function formatDate(dateStr: string): string {
-  const parts = dateStr.split(/[\/\-\.]/);
-  if (parts.length === 3) {
-    let [day, month, year] = parts;
-    
-    // Gestisce anni a 2 cifre
-    if (year.length === 2) {
-      const currentYear = new Date().getFullYear();
-      const currentCentury = Math.floor(currentYear / 100) * 100;
-      const twoDigitYear = parseInt(year);
-      year = String(twoDigitYear > 50 ? currentCentury - 100 + twoDigitYear : currentCentury + twoDigitYear);
-    }
-    
-    // Assicura che giorno e mese abbiano 2 cifre
-    day = day.padStart(2, '0');
-    month = month.padStart(2, '0');
-    
-    return `${year}-${month}-${day}`;
-  }
-  return new Date().toISOString().split('T')[0];
-}
-
-function extractDescription(line: string, dateStr: string, amountStr: string): string {
-  let cleanLine = line
-    .replace(new RegExp(dateStr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), '')
-    .replace(new RegExp(amountStr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), '')
-    .replace(/\s+/g, ' ')
-    .trim();
-  
-  // Rimuove codici comuni delle banche
-  cleanLine = cleanLine
-    .replace(/^[\d\s-]+/, '')
-    .replace(/\b(POS|ATM|BANCOMAT|TRN|REF|CRO)[\s\d]*\b/gi, '')
-    .trim();
-  
-  return cleanLine || 'Transazione PDF';
-}
-
-function categorizeTransaction(description: string): string {
-  const desc = description.toLowerCase();
-  
-  // Specific merchant mappings
-  if (desc.includes('younited') || desc.includes('paga in 3 rate')) {
-    return 'Rateizzazioni';
-  }
-  if (desc.includes('mamma arancina') || desc.includes('azienda agricola di ac nepi') || 
-      desc.includes('eur cina') || desc.includes('deliveroo')) {
-    return 'Ristorazione';
-  }
-  if (desc.includes('il gianfornaio')) {
-    return 'Bar';
-  }
-  if (desc.includes('impianto tamoil') || desc.includes('staroil')) {
-    return 'Trasporti';
-  }
-  if (desc.includes('farmaci torresina') || desc.includes('clinica villa chiara') || 
-      desc.includes('dr fabio spina medico')) {
-    return 'Salute';
-  }
-  if (desc.includes('caffe valentini')) {
-    return 'Tabacchi';
-  }
-  if (desc.includes('spazio conad')) {
-    return 'Alimenti';
-  }
-  if (desc.includes('decathlon') || desc.includes('okaidi italy')) {
-    return 'Abbigliamento';
-  }
-  if (desc.includes('color hotel')) {
-    return 'Svago';
-  }
-  if (desc.includes('apotheke gilfenklamm') || desc.includes('center casa') || 
-      desc.includes('mayr christine') || desc.includes('eurospar es1') || 
-      desc.includes('loacker') || desc.includes('momo fast food') || 
-      desc.includes('choco passion') || desc.includes('gossyshop') || 
-      desc.includes('biwak') || desc.includes('raiffeisen wippt') || 
-      desc.includes('telepedaggio') || desc.includes('autogrill') || 
-      desc.includes('mcdonald affi') || desc.includes('il pizzicagnolo')) {
-    return 'Viaggi';
-  }
-  if (desc.includes('bollettino ama') || desc.includes('commissioni bollettino ama')) {
-    return 'Utenze';
-  }
-  
-  // Generic category mappings
-  if (desc.includes('stipendio') || desc.includes('salary') || desc.includes('bonifico in entrata')) {
-    return 'Stipendio';
-  }
-  if (desc.includes('supermercato') || desc.includes('alimentari') || desc.includes('grocery') || 
-      desc.includes('conad') || desc.includes('coop') || desc.includes('esselunga')) {
-    return 'Alimenti';
-  }
-  if (desc.includes('benzina') || desc.includes('carburante') || desc.includes('fuel') || 
-      desc.includes('eni') || desc.includes('agip') || desc.includes('q8')) {
-    return 'Trasporti';
-  }
-  if (desc.includes('ristorante') || desc.includes('bar') || desc.includes('restaurant') || 
-      desc.includes('pizzeria') || desc.includes('trattoria')) {
-    return 'Ristorazione';
-  }
-  if (desc.includes('affitto') || desc.includes('rent') || desc.includes('mutuo') || 
-      desc.includes('canone')) {
-    return 'Casa';
-  }
-  if (desc.includes('utenze') || desc.includes('luce') || desc.includes('gas') || 
-      desc.includes('enel') || desc.includes('eni plenitude') || desc.includes('utilities')) {
-    return 'Utenze';
-  }
-  if (desc.includes('trasporti') || desc.includes('autobus') || desc.includes('metro') || 
-      desc.includes('trenitalia') || desc.includes('atac') || desc.includes('transport')) {
-    return 'Trasporti';
-  }
-  if (desc.includes('medico') || desc.includes('farmacia') || desc.includes('health') || 
-      desc.includes('ospedale') || desc.includes('clinica')) {
-    return 'Salute';
-  }
-  if (desc.includes('shopping') || desc.includes('abbigliamento') || desc.includes('clothing') || 
-      desc.includes('zara') || desc.includes('h&m')) {
-    return 'Abbigliamento';
-  }
-  if (desc.includes('netflix') || desc.includes('spotify') || desc.includes('entertainment') || 
-      desc.includes('cinema') || desc.includes('teatro')) {
-    return 'Svago';
-  }
-  
-  return 'Altro';
-}
+// Parsing complete - no additional helper functions needed

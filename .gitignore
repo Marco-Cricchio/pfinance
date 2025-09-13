@@ -117,4 +117,13 @@ Thumbs.db
 pfinance.db
 
 # Local development
-.vercel
+.vercel# Temporary test files
+analyze_pdf.js
+extract_40_transactions.js
+test-pdf-parser.js
+color-scale-test.html
+
+# Temporary image files  
+green.png
+red.png
+yellow.png
