@@ -86,7 +86,7 @@ export function ParetoChart({ data, threshold, obfuscateAmount }: ParetoChartPro
           y={threshold} 
           stroke="#ef4444" 
           strokeDasharray="5 5" 
-          label={{ value: "80%", position: "topRight" }}
+          label={{ value: "80%", position: "top" }}
         />
         
         <Tooltip 

@@ -154,7 +154,7 @@ async function testModelValidity(
     });
 
     let chunkCount = 0;
-    let hasContent = false;
+    const hasContent = false;
     
     for await (const chunk of stream) {
       chunkCount++;

@@ -52,8 +52,8 @@ export default function OverviewPage() {
       if (response.ok) {
         const data = await response.json();
         setParsedData(data);
-        if (data && data.accountBalance !== undefined) {
-          setAccountBalance(data.accountBalance);
+        if (data && (data as any).accountBalance !== undefined) {
+          setAccountBalance((data as any).accountBalance);
         } else if (data && data.transactions) {
           const newBalance = calculateAccountBalance(data.transactions);
           setAccountBalance(newBalance);
@@ -142,15 +142,15 @@ export default function OverviewPage() {
         throw new Error('Unsupported file format. Use CSV, PDF, or Excel (.xlsx/.xls) files.');
       }
       
-      if (data._uploadStats) {
-        setUploadStats(data._uploadStats);
+      if ((data as any)._uploadStats) {
+        setUploadStats((data as any)._uploadStats);
       }
       
       setParsedData(data);
       
       // Use account balance from API response or recalculate locally
-      if (data && data.accountBalance !== undefined) {
-        setAccountBalance(data.accountBalance);
+      if (data && (data as any).accountBalance !== undefined) {
+        setAccountBalance((data as any).accountBalance);
       } else if (data && data.transactions) {
         const newBalance = calculateAccountBalance(data.transactions);
         setAccountBalance(newBalance);

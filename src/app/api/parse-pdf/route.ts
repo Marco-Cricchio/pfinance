@@ -3,14 +3,11 @@ import { Transaction } from '@/types/transaction';
 import { insertTransactions, getParsedData } from '@/lib/database';
 import { categorizeTransaction } from '@/lib/categorizer';
 import {
-  parseTransactionLine, 
-  getMainTransactionDate, 
   parseItalianAmount, 
   generateTransactionId,
   cleanDescription,
   formatItalianDate,
-  determineTransactionType,
-  TransactionPattern
+  determineTransactionType
 } from '@/lib/parsingUtils';
 
 // Dynamic import for pdfjs-dist to handle ESM in Node.js environment
@@ -20,6 +17,7 @@ async function importPdfJs() {
     const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
     
     // Set worker to the distributed worker for Node.js environment
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const path = require('path');
     const workerPath = path.join(process.cwd(), 'node_modules', 'pdfjs-dist', 'legacy', 'build', 'pdf.worker.mjs');
     pdfjsLib.GlobalWorkerOptions.workerSrc = `file://${workerPath}`;
@@ -121,7 +119,7 @@ export async function POST(request: NextRequest) {
       const sortedYPositions = Array.from(lineGroups.keys()).sort((a, b) => b - a); // Top to bottom
       
       for (const yPos of sortedYPositions) {
-        const lineItems = lineGroups.get(yPos).sort((a, b) => a.x - b.x); // Left to right
+        const lineItems = lineGroups.get(yPos).sort((a: { x: number }, b: { x: number }) => a.x - b.x); // Left to right
         
         let lineText = '';
         let lastX = null;
@@ -154,12 +152,12 @@ export async function POST(request: NextRequest) {
     
     const transactions: Transaction[] = [];
     let currentTransaction = null;
-    let lineNumber = 0;
+    let _lineNumber = 0;
     
     console.log(`Processing ${lines.length} lines of text...`);
     
     for (const line of lines) {
-      lineNumber++;
+      _lineNumber++;
       const trimmedLine = line.trim();
       
       // Skip empty lines or irrelevant ones
@@ -183,7 +181,7 @@ export async function POST(request: NextRequest) {
           
           // Extract operation type from description for better classification
           const operationType = extractOperationType(currentTransaction.description);
-          let transactionType = determineTransactionType(operationType, cleanedDescription);
+          const transactionType = determineTransactionType(operationType, cleanedDescription);
           
           
           // Trust the semantic analysis of operation type and description
@@ -220,7 +218,7 @@ export async function POST(request: NextRequest) {
         const afterSecondDate = trimmedLine.substring(dates[1].index + dates[1][0].length).trim();
         const amountMatch = afterSecondDate.match(/^(\d{1,3}(?:\.\d{3})*,\d{2}|\d+,\d{2}|\d+)/);
         
-        if (amountMatch) {
+        if (amountMatch && amountMatch.index !== undefined) {
           const amount = parseItalianAmount(amountMatch[1]);
           const restOfLine = afterSecondDate.substring(amountMatch.index + amountMatch[0].length).trim();
           
@@ -249,7 +247,7 @@ export async function POST(request: NextRequest) {
       
       // Extract operation type from description for better classification
       const operationType = extractOperationType(currentTransaction.description);
-      let transactionType = determineTransactionType(operationType, cleanedDescription);
+      const transactionType = determineTransactionType(operationType, cleanedDescription);
       
       
       // Trust the semantic analysis of operation type and description
@@ -304,8 +302,9 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('Errore parsing PDF:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Errore sconosciuto';
     return NextResponse.json(
-      { error: `Errore durante l'elaborazione del PDF: ${error.message}` }, 
+      { error: `Errore durante l'elaborazione del PDF: ${errorMessage}` }, 
       { status: 500 }
     );
   }

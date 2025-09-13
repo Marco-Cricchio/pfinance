@@ -87,7 +87,7 @@ export function SeasonalTrendsChart({ data, averageMonthly, obfuscateAmount }: S
           y={averageMonthly} 
           stroke="#9ca3af" 
           strokeDasharray="5 5" 
-          label={{ value: "Media", position: "topRight", fill: '#9ca3af' }}
+          label={{ value: "Media", position: "top", fill: '#9ca3af' }}
         />
         <Line 
           type="monotone" 

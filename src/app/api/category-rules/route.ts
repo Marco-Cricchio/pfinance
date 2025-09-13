@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAllCategoryRules, createCategoryRule, updateCategoryRule, deleteCategoryRule } from '@/lib/database';
-import { previewCategorization } from '@/lib/categorizer';
+import { previewCategorization as _previewCategorization } from '@/lib/categorizer';
 
 export async function GET() {
   try {

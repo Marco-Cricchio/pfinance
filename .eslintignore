@@ -1,0 +1,16 @@
+# Temporary test files
+analyze_pdf.js
+extract_40_transactions.js
+test-pdf-parser.js
+color-scale-test.html
+
+# Build output
+.next/
+out/
+dist/
+
+# Dependencies
+node_modules/
+
+# Test files that use old JS patterns
+tests/

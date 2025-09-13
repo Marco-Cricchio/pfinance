@@ -67,6 +67,7 @@ function getActiveRules(): CategoryWithRule[] {
   
   try {
     // Import database dynamically to avoid client-side bundle
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { db } = require('./database');
     const stmt = db.prepare(`
       SELECT 
@@ -95,6 +96,7 @@ export function categorizeTransaction(transaction: Transaction): string {
   // 1. Check for manual override first
   if (transaction.is_manual_override && transaction.manual_category_id) {
     try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { db } = require('./database');
       const stmt = db.prepare('SELECT name FROM categories WHERE id = ? AND is_active = 1');
       const category = stmt.get(transaction.manual_category_id) as { name: string } | undefined;
@@ -131,6 +133,7 @@ export function categorizeTransactions(transactions: Transaction[]): Transaction
     // Check manual override first
     if (transaction.is_manual_override && transaction.manual_category_id) {
       try {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
         const { db } = require('./database');
         const stmt = db.prepare('SELECT name FROM categories WHERE id = ? AND is_active = 1');
         const category = stmt.get(transaction.manual_category_id) as { name: string } | undefined;
@@ -181,6 +184,7 @@ export function initializeDefaultCategories(): void {
   }
   
   try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { db } = require('./database');
     
     // Check if categories already exist

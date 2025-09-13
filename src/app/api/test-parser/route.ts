@@ -1,9 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { 
   parseTransactionLine, 
   formatItalianDate, 
-  parseItalianAmount,
-  cleanDescription 
+  parseItalianAmount
 } from '@/lib/parsingUtils';
 
 export async function GET() {
@@ -99,9 +98,10 @@ export async function GET() {
     
   } catch (error) {
     console.error('Test failed:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Errore sconosciuto';
     return NextResponse.json({
       success: false,
-      error: error.message
+      error: errorMessage
     }, { status: 500 });
   }
 }

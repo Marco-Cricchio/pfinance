@@ -38,7 +38,7 @@ export function BalanceEvolutionChart({ transactions, expandedChart, setExpanded
     const endDate = latestDate > currentDate ? latestDate : currentDate;
     
     const months = [];
-    let date = new Date(startDate);
+    const date = new Date(startDate);
     
     while (date <= endDate) {
       months.push({

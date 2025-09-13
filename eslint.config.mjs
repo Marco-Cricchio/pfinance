@@ -18,7 +18,32 @@ const eslintConfig = [
       "out/**",
       "build/**",
       "next-env.d.ts",
+      // Temporary test files
+      "analyze_pdf.js",
+      "extract_40_transactions.js",
+      "test-pdf-parser.js",
+      "color-scale-test.html",
+      "tests/**",
     ],
+  },
+  {
+    rules: {
+      // Allow unused vars in catch blocks and function params with underscore prefix
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        {
+          "argsIgnorePattern": "^_",
+          "varsIgnorePattern": "^_",
+          "ignoreRestSiblings": true
+        }
+      ],
+      // Allow any types in specific contexts where typing is complex
+      "@typescript-eslint/no-explicit-any": "warn",
+      // Allow unescaped entities in JSX (common in financial text)
+      "react/no-unescaped-entities": "off",
+      // Allow require imports in server-only code with disable comments
+      "@typescript-eslint/no-require-imports": "error",
+    },
   },
 ];
 

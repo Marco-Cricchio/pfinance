@@ -45,7 +45,7 @@ export async function DELETE(request: NextRequest) {
     } else if (filters) {
       // Cancellazione con filtri
       let query = 'DELETE FROM transactions WHERE 1=1';
-      const params: string[] = [];
+      const params: (string | number)[] = [];
 
       if (filters.categories && filters.categories.length > 0) {
         const categoryPlaceholders = filters.categories.map(() => '?').join(',');
@@ -126,7 +126,7 @@ export async function POST(request: NextRequest) {
     const db = getDatabase();
     
     let query = 'SELECT id, date, amount, description, category, type FROM transactions WHERE 1=1';
-    const params: string[] = [];
+    const params: (string | number)[] = [];
 
     if (filters.categories && filters.categories.length > 0) {
       const categoryPlaceholders = filters.categories.map(() => '?').join(',');
