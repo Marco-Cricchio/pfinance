@@ -1,13 +1,9 @@
 'use client';
-
-import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Wallet, BarChart3, TrendingUp, Brain, Lightbulb, Upload, Tag, RefreshCw, Trash2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Wallet, BarChart3, TrendingUp, Brain, Lightbulb, Upload, Settings, Tag } from 'lucide-react';
 import { AmountVisibilityProvider } from '@/contexts/AmountVisibilityContext';
 import { AmountVisibilityToggle } from '@/components/AmountVisibilityToggle';
-import { BalanceManager } from '@/components/BalanceManager';
 
 export default function DashboardLayout({
   children,
@@ -15,59 +11,6 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const [loading, setLoading] = useState(false);
-
-  const refreshData = async () => {
-    setLoading(true);
-    try {
-      const response = await fetch('/api/transactions');
-      if (response.ok) {
-        // Trigger a page reload to refresh all data
-        window.location.reload();
-      }
-    } catch (error) {
-      console.error('Error refreshing data:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const recategorizeTransactions = async () => {
-    if (confirm('Do you want to recategorize all existing transactions with new categorization rules?')) {
-      setLoading(true);
-      try {
-        const response = await fetch('/api/recategorize', { method: 'POST' });
-        if (response.ok) {
-          const result = await response.json();
-          alert(`Recategorization completed: ${result.updatedCount} transactions updated.`);
-          window.location.reload();
-        }
-      } catch (error) {
-        console.error('Error recategorizing:', error);
-        alert('Error during recategorization.');
-      } finally {
-        setLoading(false);
-      }
-    }
-  };
-
-  const clearAllData = async () => {
-    if (confirm('Are you sure you want to delete all transactions? This action cannot be undone.')) {
-      setLoading(true);
-      try {
-        const response = await fetch('/api/transactions', { method: 'DELETE' });
-        if (response.ok) {
-          alert('All data has been deleted.');
-          window.location.reload();
-        }
-      } catch (error) {
-        console.error('Error deleting data:', error);
-        alert('Error during data deletion.');
-      } finally {
-        setLoading(false);
-      }
-    }
-  };
 
   const navigationItems = [
     {
@@ -99,6 +42,12 @@ export default function DashboardLayout({
       label: 'Categories',
       icon: Tag,
       description: 'Manage transaction categories'
+    },
+    {
+      href: '/dashboard/settings',
+      label: 'Settings',
+      icon: Settings,
+      description: 'System settings and database management'
     },
   ];
 
@@ -149,48 +98,6 @@ export default function DashboardLayout({
             })}
           </nav>
 
-          {/* Quick Actions */}
-          <div className="border-t border-sidebar-border pt-4 space-y-2">
-            <h3 className="text-xs font-semibold text-sidebar-foreground uppercase tracking-wider mb-2">Quick Actions</h3>
-            
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={refreshData} 
-              disabled={loading}
-              className="w-full justify-start text-xs"
-            >
-              <RefreshCw className={`h-3 w-3 mr-2 ${loading ? 'animate-spin' : ''}`} />
-              Refresh Data
-            </Button>
-
-            <Button 
-              variant="secondary" 
-              size="sm" 
-              onClick={recategorizeTransactions} 
-              disabled={loading}
-              className="w-full justify-start text-xs"
-            >
-              <Tag className="h-3 w-3 mr-2" />
-              Recategorize
-            </Button>
-
-            <Button 
-              variant="destructive" 
-              size="sm" 
-              onClick={clearAllData} 
-              disabled={loading}
-              className="w-full justify-start text-xs"
-            >
-              <Trash2 className="h-3 w-3 mr-2" />
-              Clear All
-            </Button>
-          </div>
-
-          {/* Balance Management Section */}
-          <div className="border-t border-sidebar-border pt-4 mt-4">
-            <BalanceManager />
-          </div>
 
           {/* Amount Visibility Toggle - Bottom of Sidebar */}
           <div className="border-t border-sidebar-border pt-4 mt-4">
@@ -228,6 +135,7 @@ export default function DashboardLayout({
                     {pathname === '/dashboard/intelligent' && 'Intelligent Analysis'}
                     {pathname === '/dashboard/insights' && 'AI Insights'}
                     {pathname === '/dashboard/categories' && 'Categories Management'}
+                    {pathname === '/dashboard/settings' && 'Impostazioni Sistema'}
                   </h2>
                   <p className="text-xs lg:text-sm text-muted-foreground sm:block">
                     {pathname === '/dashboard/overview' && 'General financial overview and statistics'}
@@ -235,21 +143,19 @@ export default function DashboardLayout({
                     {pathname === '/dashboard/intelligent' && 'AI-powered pattern recognition and analysis'}
                     {pathname === '/dashboard/insights' && 'Personalized recommendations and actionable insights'}
                     {pathname === '/dashboard/categories' && 'Manage transaction categories and rules'}
+                    {pathname === '/dashboard/settings' && 'Backup database, gestione saldi e azioni di sistema'}
                   </p>
                 </div>
               </div>
               
               <div className="flex items-center gap-2">
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  className="text-xs flex"
+                <button 
+                  className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-xs font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-8 px-3 py-1"
                   onClick={() => document.getElementById('header-file-upload')?.click()}
-                  disabled={loading}
                 >
                   <Upload className="h-3 w-3 mr-1" />
                   Upload Data
-                </Button>
+                </button>
                 <input
                   id="header-file-upload"
                   type="file"
@@ -303,17 +209,6 @@ export default function DashboardLayout({
           {children}
         </main>
 
-        {/* Global Loading Overlay */}
-        {loading && (
-          <div className="fixed inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center z-50">
-            <div className="bg-card border border-border p-6 rounded shadow-lg">
-              <div className="flex items-center gap-4">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-                <p className="text-sm">Processing...</p>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
       </div>
     </AmountVisibilityProvider>

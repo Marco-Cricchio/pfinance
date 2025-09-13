@@ -475,6 +475,16 @@ export function getAllCategories(): any[] {
   }
 }
 
+export function getCategoryByName(name: string): any | null {
+  try {
+    const stmt = db.prepare('SELECT * FROM categories WHERE name = ? AND is_active = 1');
+    return stmt.get(name) || null;
+  } catch (error) {
+    console.error('Error fetching category by name:', error);
+    return null;
+  }
+}
+
 export function createCategory(name: string, type: string = 'both', color: string = '#8884d8'): number | null {
   try {
     const stmt = db.prepare(`
@@ -485,6 +495,22 @@ export function createCategory(name: string, type: string = 'both', color: strin
     return result.lastInsertRowid as number;
   } catch (error) {
     console.error('Error creating category:', error);
+    return null;
+  }
+}
+
+export function createOrGetCategory(name: string, type: string = 'both', color: string = '#8884d8'): number | null {
+  try {
+    // First, check if category already exists
+    const existing = getCategoryByName(name);
+    if (existing) {
+      return existing.id;
+    }
+    
+    // If not exists, create it
+    return createCategory(name, type, color);
+  } catch (error) {
+    console.error('Error creating or getting category:', error);
     return null;
   }
 }
@@ -555,6 +581,16 @@ export function getAllCategoryRules(): any[] {
   }
 }
 
+export function getCategoryRuleByPatternAndCategory(categoryId: number, pattern: string, matchType: string = 'contains'): any | null {
+  try {
+    const stmt = db.prepare('SELECT * FROM category_rules WHERE category_id = ? AND pattern = ? AND match_type = ? AND enabled = 1');
+    return stmt.get(categoryId, pattern, matchType) || null;
+  } catch (error) {
+    console.error('Error fetching category rule by pattern:', error);
+    return null;
+  }
+}
+
 export function createCategoryRule(categoryId: number, pattern: string, matchType: string = 'contains', priority: number = 0): number | null {
   try {
     const stmt = db.prepare(`
@@ -565,6 +601,22 @@ export function createCategoryRule(categoryId: number, pattern: string, matchTyp
     return result.lastInsertRowid as number;
   } catch (error) {
     console.error('Error creating category rule:', error);
+    return null;
+  }
+}
+
+export function createOrGetCategoryRule(categoryId: number, pattern: string, matchType: string = 'contains', priority: number = 0): number | null {
+  try {
+    // First, check if rule already exists
+    const existing = getCategoryRuleByPatternAndCategory(categoryId, pattern, matchType);
+    if (existing) {
+      return existing.id;
+    }
+    
+    // If not exists, create it
+    return createCategoryRule(categoryId, pattern, matchType, priority);
+  } catch (error) {
+    console.error('Error creating or getting category rule:', error);
     return null;
   }
 }
