@@ -7,6 +7,7 @@ import { Wallet, BarChart3, TrendingUp, Brain, Lightbulb, Upload, Tag, RefreshCw
 import { Button } from '@/components/ui/button';
 import { AmountVisibilityProvider } from '@/contexts/AmountVisibilityContext';
 import { AmountVisibilityToggle } from '@/components/AmountVisibilityToggle';
+import { BalanceManager } from '@/components/BalanceManager';
 
 export default function DashboardLayout({
   children,
@@ -105,19 +106,23 @@ export default function DashboardLayout({
     <AmountVisibilityProvider>
       <div className="min-h-screen bg-background flex">
       {/* Sidebar */}
-      <div className="w-64 bg-sidebar border-r border-sidebar-border shadow-lg fixed left-0 top-0 h-full z-40 lg:translate-x-0 transform -translate-x-full transition-transform duration-300 ease-in-out" id="sidebar">
-        <div className="p-6">
-          {/* Brand */}
-          <Link href="/dashboard/overview" className="flex items-center gap-3 mb-6 hover:opacity-80 transition-opacity">
-            <Wallet className="h-8 w-8 text-sidebar-primary" />
-            <div>
-              <h1 className="text-xl font-bold text-sidebar-foreground">pFinance Lab</h1>
-              <p className="text-xs text-muted-foreground">Advanced Analytics</p>
-            </div>
-          </Link>
+      <div className="w-64 bg-sidebar border-r border-sidebar-border shadow-lg fixed left-0 top-0 h-full z-40 lg:translate-x-0 transform -translate-x-full transition-transform duration-300 ease-in-out flex flex-col" id="sidebar">
+        <div className="flex-1 overflow-y-auto scrollbar-thin p-6">
+          {/* Brand - Fixed at top */}
+          <div className="flex-shrink-0">
+            <Link href="/dashboard/overview" className="flex items-center gap-3 mb-6 hover:opacity-80 transition-opacity">
+              <Wallet className="h-8 w-8 text-sidebar-primary" />
+              <div>
+                <h1 className="text-xl font-bold text-sidebar-foreground">pFinance Lab</h1>
+                <p className="text-xs text-muted-foreground">Advanced Analytics</p>
+              </div>
+            </Link>
+          </div>
 
-          {/* Navigation */}
-          <nav className="space-y-2 mb-6">
+          {/* Scrollable content area */}
+          <div className="flex-1 space-y-6 min-h-0">
+            {/* Navigation */}
+            <nav className="space-y-2">
             {navigationItems.map((item) => {
               const Icon = item.icon;
               const isActive = pathname === item.href;
@@ -182,10 +187,16 @@ export default function DashboardLayout({
             </Button>
           </div>
 
+          {/* Balance Management Section */}
+          <div className="border-t border-sidebar-border pt-4 mt-4">
+            <BalanceManager />
+          </div>
+
           {/* Amount Visibility Toggle - Bottom of Sidebar */}
           <div className="border-t border-sidebar-border pt-4 mt-4">
             <h3 className="text-xs font-semibold text-sidebar-foreground uppercase tracking-wider mb-3">Privacy</h3>
             <AmountVisibilityToggle />
+          </div>
           </div>
         </div>
       </div>

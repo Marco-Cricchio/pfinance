@@ -31,12 +31,15 @@ export async function POST(request: NextRequest) {
 
 export async function GET() {
   try {
-    // Get all transaction descriptions for preview
+    // Get all transactions for preview (including manual overrides)
     const transactions = getAllTransactions();
-    const sampleDescriptions = transactions
-      .map(t => t.description);
     
-    const preview = previewCategorization(sampleDescriptions);
+    // Create preview using actual transaction categories (including manual ones)
+    const preview = transactions.map(transaction => ({
+      description: transaction.description,
+      // Use the resolved category from getAllTransactions (which already considers manual overrides)
+      category: transaction.category || 'Altro'
+    }));
     
     // Get categories to include color information
     const categories = getAllCategories();

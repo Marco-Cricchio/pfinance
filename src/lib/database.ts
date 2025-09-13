@@ -126,11 +126,84 @@ try {
       db.exec('ALTER TABLE transactions ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP');
     }
     
+    // Enhanced balance management migration
+    const balanceTableInfo = db.prepare("PRAGMA table_info(account_balance)").all() as Array<{name: string}>;
+    const hasBalanceDate = balanceTableInfo.some(col => col.name === 'balance_date');
+    const hasFileSource = balanceTableInfo.some(col => col.name === 'file_source');
+    const hasBalanceManualOverride = balanceTableInfo.some(col => col.name === 'is_manual_override');
+    
+    if (!hasBalanceDate) {
+      console.log('🔧 Adding balance_date column to account_balance...');
+      db.exec('ALTER TABLE account_balance ADD COLUMN balance_date DATE');
+    }
+    
+    if (!hasFileSource) {
+      console.log('🔧 Adding file_source column to account_balance...');
+      db.exec('ALTER TABLE account_balance ADD COLUMN file_source TEXT');
+    }
+    
+    if (!hasBalanceManualOverride) {
+      console.log('🔧 Adding is_manual_override column to account_balance...');
+      db.exec('ALTER TABLE account_balance ADD COLUMN is_manual_override BOOLEAN DEFAULT 0');
+    }
+    
+    // Create file_balances table for storing balance history from files
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS file_balances (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        filename TEXT NOT NULL,
+        balance REAL NOT NULL,
+        balance_date DATE,
+        file_type TEXT NOT NULL, -- 'pdf' or 'xlsx'
+        extraction_pattern TEXT, -- which pattern was used to extract balance
+        is_selected BOOLEAN DEFAULT 0, -- which balance is currently active
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    
+    // Create balance_audit_log table for tracking manual changes
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS balance_audit_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        old_balance REAL,
+        new_balance REAL,
+        change_reason TEXT, -- 'file_import', 'manual_override', 'calculation_correction'
+        changed_by TEXT DEFAULT 'system',
+        file_source TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+    
+    // Set initial balance to €8824.07 if still at default
+    const currentBalance = db.prepare('SELECT balance FROM account_balance WHERE id = 1').get() as { balance: number } | undefined;
+    if (currentBalance && currentBalance.balance === 1000.0) {
+      console.log('🔧 Setting initial balance to €8824.07...');
+      db.exec(`
+        UPDATE account_balance 
+        SET balance = 8824.07, 
+            file_source = 'initial_setup', 
+            is_manual_override = 1,
+            updated_at = CURRENT_TIMESTAMP 
+        WHERE id = 1
+      `);
+      
+      // Log this change
+      db.exec(`
+        INSERT INTO balance_audit_log (old_balance, new_balance, change_reason, file_source)
+        VALUES (1000.0, 8824.07, 'initial_setup', 'initial_setup')
+      `);
+    }
+    
     console.log('✅ Database migration completed successfully');
     
     // Create missing indexes after migration
     db.exec(`
       CREATE INDEX IF NOT EXISTS idx_transactions_manual_category ON transactions(manual_category_id);
+      CREATE INDEX IF NOT EXISTS idx_file_balances_filename ON file_balances(filename);
+      CREATE INDEX IF NOT EXISTS idx_file_balances_date ON file_balances(balance_date DESC);
+      CREATE INDEX IF NOT EXISTS idx_file_balances_selected ON file_balances(is_selected);
+      CREATE INDEX IF NOT EXISTS idx_balance_audit_created ON balance_audit_log(created_at DESC);
     `);
     
   } catch (migrationError) {
@@ -237,12 +310,28 @@ export function insertTransactions(transactions: Transaction[]): { inserted: num
 export function getAllTransactions(): Transaction[] {
   try {
     const stmt = db.prepare(`
-      SELECT id, date, amount, description, category, type
-      FROM transactions
-      ORDER BY date DESC
+      SELECT 
+        t.id, t.date, t.amount, t.description, t.category, t.type, 
+        t.manual_category_id, t.is_manual_override,
+        COALESCE(c.name, t.category) as resolved_category
+      FROM transactions t
+      LEFT JOIN categories c ON t.manual_category_id = c.id
+      ORDER BY t.date DESC
     `);
     
-    return stmt.all() as Transaction[];
+    const results = stmt.all() as any[];
+    
+    // Map results to use resolved_category as the main category when manual override exists
+    return results.map(row => ({
+      id: row.id,
+      date: row.date,
+      amount: row.amount,
+      description: row.description,
+      category: row.is_manual_override ? row.resolved_category : row.category,
+      type: row.type,
+      manual_category_id: row.manual_category_id,
+      is_manual_override: row.is_manual_override
+    })) as Transaction[];
   } catch (error) {
     console.error('Errore recupero transazioni:', error);
     return [];
@@ -573,6 +662,290 @@ export function removeManualCategory(transactionId: string): boolean {
   } catch (error) {
     console.error('Error removing manual category:', error);
     return false;
+  }
+}
+
+// ============================================================================
+// BALANCE MANAGEMENT FUNCTIONS
+// ============================================================================
+
+export interface FileBalance {
+  id: number;
+  filename: string;
+  balance: number;
+  balance_date?: string;
+  file_type: 'pdf' | 'xlsx';
+  extraction_pattern?: string;
+  is_selected: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BalanceAuditLog {
+  id: number;
+  old_balance?: number;
+  new_balance: number;
+  change_reason: string;
+  changed_by: string;
+  file_source?: string;
+  created_at: string;
+}
+
+// Save balance from file import
+export function saveFileBalance(
+  filename: string, 
+  balance: number, 
+  fileType: 'pdf' | 'xlsx', 
+  balanceDate?: string,
+  extractionPattern?: string
+): number | null {
+  try {
+    // Check if file balance already exists
+    const existing = db.prepare(
+      'SELECT id FROM file_balances WHERE filename = ?'
+    ).get(filename) as { id: number } | undefined;
+    
+    if (existing) {
+      // Update existing
+      const stmt = db.prepare(`
+        UPDATE file_balances 
+        SET balance = ?, balance_date = ?, extraction_pattern = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE filename = ?
+      `);
+      stmt.run(balance, balanceDate, extractionPattern, filename);
+      return existing.id;
+    } else {
+      // Insert new
+      const stmt = db.prepare(`
+        INSERT INTO file_balances (filename, balance, balance_date, file_type, extraction_pattern)
+        VALUES (?, ?, ?, ?, ?)
+      `);
+      const result = stmt.run(filename, balance, balanceDate, fileType, extractionPattern);
+      return result.lastInsertRowid as number;
+    }
+  } catch (error) {
+    console.error('Error saving file balance:', error);
+    return null;
+  }
+}
+
+// Get all file balances
+export function getAllFileBalances(): FileBalance[] {
+  try {
+    const stmt = db.prepare(`
+      SELECT * FROM file_balances 
+      ORDER BY balance_date DESC, created_at DESC
+    `);
+    return stmt.all() as FileBalance[];
+  } catch (error) {
+    console.error('Error fetching file balances:', error);
+    return [];
+  }
+}
+
+// Set active balance from file
+export function setActiveFileBalance(fileBalanceId: number): boolean {
+  try {
+    const transaction = db.transaction(() => {
+      // Get the selected balance
+      const selectedBalance = db.prepare(
+        'SELECT * FROM file_balances WHERE id = ?'
+      ).get(fileBalanceId) as FileBalance | undefined;
+      
+      if (!selectedBalance) {
+        throw new Error('File balance not found');
+      }
+      
+      // Get current balance for audit
+      const currentBalance = getAccountBalance();
+      
+      // Unselect all other balances
+      db.prepare('UPDATE file_balances SET is_selected = 0').run();
+      
+      // Select the chosen balance
+      db.prepare('UPDATE file_balances SET is_selected = 1 WHERE id = ?').run(fileBalanceId);
+      
+      // Update account balance
+      db.prepare(`
+        UPDATE account_balance 
+        SET balance = ?, 
+            balance_date = ?, 
+            file_source = ?,
+            is_manual_override = 0,
+            updated_at = CURRENT_TIMESTAMP 
+        WHERE id = 1
+      `).run(selectedBalance.balance, selectedBalance.balance_date, selectedBalance.filename);
+      
+      // Log the change
+      db.prepare(`
+        INSERT INTO balance_audit_log (old_balance, new_balance, change_reason, file_source)
+        VALUES (?, ?, ?, ?)
+      `).run(currentBalance, selectedBalance.balance, 'file_selection', selectedBalance.filename);
+      
+      console.log(`✅ Active balance set to €${selectedBalance.balance} from ${selectedBalance.filename}`);
+    });
+    
+    transaction();
+    return true;
+  } catch (error) {
+    console.error('Error setting active file balance:', error);
+    return false;
+  }
+}
+
+// Manual balance override
+export function setManualBalance(newBalance: number, reason: string = 'manual_override'): boolean {
+  try {
+    const currentBalance = getAccountBalance();
+    
+    // Get today's date in YYYY-MM-DD format
+    const today = new Date().toISOString().slice(0, 10);
+    
+    const stmt = db.prepare(`
+      UPDATE account_balance 
+      SET balance = ?, 
+          balance_date = ?,
+          is_manual_override = 1,
+          updated_at = CURRENT_TIMESTAMP 
+      WHERE id = 1
+    `);
+    
+    const result = stmt.run(newBalance, today);
+    
+    // Log the change
+    db.prepare(`
+      INSERT INTO balance_audit_log (old_balance, new_balance, change_reason, changed_by)
+      VALUES (?, ?, ?, ?)
+    `).run(currentBalance, newBalance, reason, 'user');
+    
+    console.log(`🔧 Manual balance override: €${currentBalance} → €${newBalance} (Reason: ${reason})`);
+    return result.changes > 0;
+  } catch (error) {
+    console.error('Error setting manual balance:', error);
+    return false;
+  }
+}
+
+// Get balance audit log
+export function getBalanceAuditLog(limit: number = 50): BalanceAuditLog[] {
+  try {
+    const stmt = db.prepare(`
+      SELECT * FROM balance_audit_log 
+      ORDER BY created_at DESC 
+      LIMIT ?
+    `);
+    return stmt.all(limit) as BalanceAuditLog[];
+  } catch (error) {
+    console.error('Error fetching balance audit log:', error);
+    return [];
+  }
+}
+
+// Calculate current balance with validation
+export function calculateCurrentBalance(): {
+  calculatedBalance: number;
+  baseBalance: number;
+  baseDate?: string;
+  fileSource?: string;
+  difference: number;
+  isWithinThreshold: boolean;
+} {
+  try {
+    // Get base balance info including manual override flag
+    const baseInfo = db.prepare(
+      'SELECT balance, balance_date, file_source, is_manual_override FROM account_balance WHERE id = 1'
+    ).get() as { balance: number; balance_date?: string; file_source?: string; is_manual_override: boolean } | undefined;
+    
+    if (!baseInfo) {
+      throw new Error('No base balance found');
+    }
+    
+    // If no base date, calculate from all transactions (legacy behavior)
+    if (!baseInfo.balance_date) {
+      const calculated = calculateAccountBalance();
+      return {
+        calculatedBalance: calculated,
+        baseBalance: baseInfo.balance,
+        difference: calculated - baseInfo.balance,
+        isWithinThreshold: Math.abs(calculated - baseInfo.balance) <= 50.0
+      };
+    }
+    
+    // NEW LOGIC: For manual overrides with date, calculate from that date forward
+    if (baseInfo.is_manual_override) {
+      // Get transactions strictly after the balance_date
+      const transactions = db.prepare(`
+        SELECT amount, type FROM transactions 
+        WHERE date > ? 
+        ORDER BY date ASC
+      `).all(baseInfo.balance_date) as { amount: number; type: string }[];
+      
+      // If no transactions after the override date, no discrepancy
+      if (transactions.length === 0) {
+        return {
+          calculatedBalance: baseInfo.balance,
+          baseBalance: baseInfo.balance,
+          baseDate: baseInfo.balance_date,
+          fileSource: baseInfo.file_source,
+          difference: 0,
+          isWithinThreshold: true
+        };
+      }
+      
+      // Calculate incremental balance: Saldo Finale = Saldo Iniziale + ∑(Entrate) - ∑(Uscite)
+      let calculatedBalance = baseInfo.balance;
+      for (const transaction of transactions) {
+        if (transaction.type === 'income') {
+          calculatedBalance += Math.abs(transaction.amount);
+        } else if (transaction.type === 'expense') {
+          calculatedBalance -= Math.abs(transaction.amount);
+        }
+      }
+      
+      return {
+        calculatedBalance,
+        baseBalance: baseInfo.balance,
+        baseDate: baseInfo.balance_date,
+        fileSource: baseInfo.file_source,
+        difference: calculatedBalance - baseInfo.balance,
+        isWithinThreshold: Math.abs(calculatedBalance - baseInfo.balance) <= 50.0
+      };
+    }
+    
+    // LEGACY LOGIC: For file-based balances (not manual overrides)
+    // Get transactions after base date
+    const transactions = db.prepare(`
+      SELECT amount, type FROM transactions 
+      WHERE date > ? 
+      ORDER BY date ASC
+    `).all(baseInfo.balance_date) as { amount: number; type: string }[];
+    
+    // Calculate incremental balance
+    let calculatedBalance = baseInfo.balance;
+    for (const transaction of transactions) {
+      if (transaction.type === 'income') {
+        calculatedBalance += Math.abs(transaction.amount);
+      } else if (transaction.type === 'expense') {
+        calculatedBalance -= Math.abs(transaction.amount);
+      }
+    }
+    
+    return {
+      calculatedBalance,
+      baseBalance: baseInfo.balance,
+      baseDate: baseInfo.balance_date,
+      fileSource: baseInfo.file_source,
+      difference: calculatedBalance - baseInfo.balance,
+      isWithinThreshold: Math.abs(calculatedBalance - baseInfo.balance) <= 50.0
+    };
+  } catch (error) {
+    console.error('Error calculating current balance:', error);
+    return {
+      calculatedBalance: 0,
+      baseBalance: 0,
+      difference: 0,
+      isWithinThreshold: false
+    };
   }
 }
 

@@ -1,22 +1,37 @@
 import { NextResponse } from 'next/server';
-import { getParsedData, getDatabaseStats, clearAllTransactions, updateAccountBalance, getAccountBalance } from '@/lib/database';
+import { getParsedData, getDatabaseStats, clearAllTransactions, updateAccountBalance, getAccountBalance, calculateCurrentBalance } from '@/lib/database';
 
 export async function GET() {
   try {
     const data = getParsedData();
     const stats = getDatabaseStats();
-    // Usa il saldo corrente memorizzato nel DB, non calcolato da tutte le transazioni
+    
+    // Enhanced balance information with validation
     const accountBalance = getAccountBalance();
+    const balanceValidation = calculateCurrentBalance();
     
     console.log(`📊 Caricati ${stats.totalTransactions} transazioni dal database`);
     console.log(`💰 Saldo contabile: €${accountBalance.toFixed(2)}`);
     
+    // Check for balance discrepancies
+    if (!balanceValidation.isWithinThreshold) {
+      console.log(`⚠️ Balance discrepancy detected: €${balanceValidation.difference.toFixed(2)}`);
+    }
+    
     return NextResponse.json({
       ...data,
       accountBalance,
+      balanceValidation: {
+        calculatedBalance: balanceValidation.calculatedBalance,
+        difference: balanceValidation.difference,
+        isWithinThreshold: balanceValidation.isWithinThreshold,
+        baseDate: balanceValidation.baseDate,
+        fileSource: balanceValidation.fileSource
+      },
       _meta: {
         totalTransactions: stats.totalTransactions,
         accountBalance,
+        hasBalanceAlert: !balanceValidation.isWithinThreshold,
         lastUpdated: new Date().toISOString()
       }
     });

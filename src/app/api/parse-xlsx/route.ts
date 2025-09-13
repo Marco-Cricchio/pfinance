@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Transaction } from '@/types/transaction';
 import * as XLSX from 'xlsx';
-import { insertTransactions, getParsedData } from '@/lib/database';
+import { insertTransactions, getParsedData, saveFileBalance } from '@/lib/database';
 import { categorizeTransaction } from '@/lib/categorizer';
 import { 
   formatItalianDate, 
@@ -9,6 +9,74 @@ import {
   cleanDescription,
   generateTransactionId 
 } from '@/lib/parsingUtils';
+
+/**
+ * Extracts balance from XLSX data
+ * Looks for "Saldo disponibile:" pattern
+ */
+function extractBalanceFromXLSX(jsonData: unknown[]): { balance: number | null; pattern?: string; date?: string } {
+  for (let i = 0; i < jsonData.length; i++) {
+    const row = jsonData[i] as string[];
+    if (!row || row.length === 0) continue;
+    
+    // Check each cell in the row for balance pattern
+    for (let cellIndex = 0; cellIndex < row.length; cellIndex++) {
+      const cellValue = row[cellIndex]?.toString() || '';
+      
+      if (cellValue.toLowerCase().includes('saldo disponibile:')) {
+        console.log(`🔍 Found balance pattern "Saldo disponibile:" in row ${i}, cell ${cellIndex}:`, cellValue);
+        
+        // Look for amount in the same cell or adjacent cells
+        let balance = null;
+        
+        // First try to extract from same cell (after the colon)
+        // Handle formats like: "Saldo disponibile: +8.824,07 Euro", "Saldo disponibile: 1.234,56", "Saldo disponibile: 999,99"
+        const sameCell = cellValue.match(/saldo disponibile:\s*[+\-]?\s*(\d{1,3}(?:\.\d{3})*,\d{2}|\d+,\d{2}|\d+)(?:\s*euro)?/i);
+        if (sameCell) {
+          balance = parseItalianAmount(sameCell[1]);
+        } else {
+          // Try adjacent cells in the same row
+          for (let j = cellIndex + 1; j < row.length && j <= cellIndex + 3; j++) {
+            const adjacentCell = row[j]?.toString() || '';
+            const amountMatch = adjacentCell.match(/(\d{1,3}(?:\.\d{3})*,\d{2}|\d+,\d{2}|\d+)/);
+            if (amountMatch) {
+              balance = parseItalianAmount(amountMatch[1]);
+              break;
+            }
+          }
+        }
+        
+        if (balance !== null) {
+          // Try to find a date in the same row or nearby rows
+          let balanceDate = undefined;
+          for (let dateRow = Math.max(0, i - 2); dateRow <= Math.min(jsonData.length - 1, i + 2); dateRow++) {
+            const searchRow = jsonData[dateRow] as string[];
+            if (!searchRow) continue;
+            
+            for (const cell of searchRow) {
+              const dateMatch = cell?.toString().match(/\b(\d{2})\/(\d{2})\/(\d{2,4})\b/);
+              if (dateMatch) {
+                balanceDate = formatItalianDate(dateMatch[0]);
+                break;
+              }
+            }
+            if (balanceDate) break;
+          }
+          
+          console.log(`✅ Extracted balance: €${balance} using pattern "Saldo disponibile:"`);
+          return {
+            balance,
+            pattern: 'Saldo disponibile:',
+            date: balanceDate
+          };
+        }
+      }
+    }
+  }
+  
+  console.log('⚠️ No balance found in XLSX using "Saldo disponibile:" pattern');
+  return { balance: null };
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -78,6 +146,9 @@ export async function POST(request: NextRequest) {
     }
     
     console.log('First 3 rows:', JSON.stringify(jsonData.slice(0, 3), null, 2));
+    
+    // Extract balance from XLSX data
+    const balanceInfo = extractBalanceFromXLSX(jsonData);
     
     const transactions: Transaction[] = [];
     
@@ -198,6 +269,25 @@ export async function POST(request: NextRequest) {
     
     // Salva le transazioni nel database (evita automaticamente i duplicati)
     const { inserted, duplicates } = insertTransactions(transactions);
+    
+    // Save balance to file_balances table if found
+    if (balanceInfo.balance !== null) {
+      const balanceId = saveFileBalance(
+        file.name,
+        balanceInfo.balance,
+        'xlsx',
+        balanceInfo.date,
+        balanceInfo.pattern
+      );
+      
+      if (balanceId) {
+        console.log(`✅ Balance €${balanceInfo.balance} saved to file_balances with ID ${balanceId}`);
+      } else {
+        console.log('⚠️ Failed to save balance to database');
+      }
+    } else {
+      console.log('⚠️ No balance extracted from XLSX - not saved to database');
+    }
     
     // Recupera tutti i dati dal database (incluse le transazioni esistenti)
     const allData = getParsedData();

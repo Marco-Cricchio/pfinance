@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Transaction } from '@/types/transaction';
-import { insertTransactions, getParsedData } from '@/lib/database';
+import { insertTransactions, getParsedData, saveFileBalance } from '@/lib/database';
 import { categorizeTransaction } from '@/lib/categorizer';
 import {
   parseItalianAmount, 
@@ -54,6 +54,51 @@ function extractOperationType(description: string): string {
   if (desc.includes('STIPENDIO')) return 'STIPENDIO';
   
   return '';
+}
+
+/**
+ * Extracts balance from PDF text using multiple patterns
+ * Supports both "SALDO FINALE" and "SALDO DISPONIBILE" formats
+ */
+function extractBalanceFromPDF(text: string): { balance: number | null; pattern?: string; date?: string } {
+  const lines = text.split('\n');
+  const balancePatterns = [
+    'SALDO FINALE',
+    'SALDO DISPONIBILE'
+  ];
+  
+  for (const pattern of balancePatterns) {
+    for (const line of lines) {
+      const upperLine = line.toUpperCase();
+      
+      if (upperLine.includes(pattern)) {
+        console.log(`🔍 Found balance pattern "${pattern}" in line:`, line);
+        
+        // Try to extract amount from the same line first
+        const amountMatch = line.match(/(\d{1,3}(?:\.\d{3})*,\d{2}|\d+,\d{2}|\d+)/g);
+        
+        if (amountMatch && amountMatch.length > 0) {
+          // Use the last amount found in the line (usually the balance)
+          const lastAmount = amountMatch[amountMatch.length - 1];
+          const balance = parseItalianAmount(lastAmount);
+          
+          // Try to extract date from the same line
+          const dateMatch = line.match(/\b(\d{2})\/(\d{2})\/(\d{2})\b/);
+          const balanceDate = dateMatch ? formatItalianDate(dateMatch[0]) : undefined;
+          
+          console.log(`✅ Extracted balance: €${balance} using pattern "${pattern}"`);
+          return { 
+            balance, 
+            pattern, 
+            date: balanceDate 
+          };
+        }
+      }
+    }
+  }
+  
+  console.log('⚠️ No balance found in PDF using any known pattern');
+  return { balance: null };
 }
 
 export async function POST(request: NextRequest) {
@@ -142,7 +187,12 @@ export async function POST(request: NextRequest) {
       fullText += pageText + '\n';
     }
     
-    console.log('PDF text extraction complete, processing transactions...');
+    console.log('PDF text extraction complete, extracting balance...');
+    
+    // Extract balance from PDF text
+    const balanceInfo = extractBalanceFromPDF(fullText);
+    
+    console.log('Processing transactions...');
     
     // Split text into lines
     const lines = fullText.split('\n').filter(line => line.trim().length > 0);
@@ -288,6 +338,25 @@ export async function POST(request: NextRequest) {
     const { inserted, duplicates } = insertTransactions(transactions);
     
     console.log(`Database save complete: ${inserted} new transactions, ${duplicates} duplicates ignored`);
+    
+    // Save balance to file_balances table if found
+    if (balanceInfo.balance !== null) {
+      const balanceId = saveFileBalance(
+        file.name,
+        balanceInfo.balance,
+        'pdf',
+        balanceInfo.date,
+        balanceInfo.pattern
+      );
+      
+      if (balanceId) {
+        console.log(`✅ Balance €${balanceInfo.balance} saved to file_balances with ID ${balanceId}`);
+      } else {
+        console.log('⚠️ Failed to save balance to database');
+      }
+    } else {
+      console.log('⚠️ No balance extracted from PDF - not saved to database');
+    }
     
     // Retrieve all data from database (including existing transactions)
     const allData = getParsedData();
