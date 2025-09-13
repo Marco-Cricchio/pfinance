@@ -9,6 +9,8 @@ import {
   formatItalianDate,
   determineTransactionType
 } from '@/lib/parsingUtils';
+import { detectDocumentFormat, isBancoPostaFormat } from '@/lib/formatDetectors';
+import { parseBancoPosta, extractBancoPostaBalance } from '@/lib/bancoPostaParser';
 
 // Dynamic import for pdfjs-dist to handle ESM in Node.js environment
 async function importPdfJs() {
@@ -175,6 +177,54 @@ export async function POST(request: NextRequest) {
       fullText += pageText + '\n';
     }
     
+    
+    // Detect document format and use appropriate parser
+    const detectedFormat = detectDocumentFormat(fullText);
+    
+    if (detectedFormat === 'BancoPosta') {
+      // Use BancoPosta-specific parser
+      console.log('Detected BancoPosta format, using specialized parser');
+      
+      const bancoPostaResult = parseBancoPosta(fullText);
+      
+      // Apply categorization to transactions
+      const categorizedTransactions = bancoPostaResult.transactions.map(transaction => ({
+        ...transaction,
+        category: categorizeTransaction(transaction)
+      }));
+      
+      // Save transactions to database
+      const { inserted, duplicates } = insertTransactions(categorizedTransactions);
+      
+      // Extract and save balance
+      const balanceInfo = extractBancoPostaBalance(fullText);
+      if (balanceInfo.balance !== null) {
+        const balanceId = saveFileBalance(
+          file.name,
+          balanceInfo.balance,
+          'pdf',
+          balanceInfo.date,
+          balanceInfo.pattern
+        );
+        console.log(balanceId ? 'Balance saved successfully' : 'Failed to save balance');
+      }
+      
+      // Retrieve all data from database
+      const allData = getParsedData();
+      
+      return NextResponse.json({
+        ...allData,
+        _uploadStats: {
+          newTransactions: inserted,
+          duplicatesIgnored: duplicates,
+          totalInFile: categorizedTransactions.length,
+          format: 'BancoPosta'
+        }
+      });
+    }
+    
+    // Fallback to original parser for other formats
+    console.log('Using original PDF parser for format:', detectedFormat || 'Unknown');
     
     // Extract balance from PDF text
     const balanceInfo = extractBalanceFromPDF(fullText);
@@ -345,7 +395,8 @@ export async function POST(request: NextRequest) {
       _uploadStats: {
         newTransactions: inserted,
         duplicatesIgnored: duplicates,
-        totalInFile: transactions.length
+        totalInFile: transactions.length,
+        format: detectedFormat || 'Legacy'
       }
     });
   } catch (error) {

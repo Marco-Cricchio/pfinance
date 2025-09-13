@@ -287,7 +287,42 @@ export function initializeDefaultCategories(): void {
         // Stipendio
         { category: 'Stipendio', pattern: 'stipendio', priority: 10 },
         { category: 'Stipendio', pattern: 'cedolino', priority: 10 },
-        { category: 'Stipendio', pattern: 'accredito stipendio', priority: 5 }
+        { category: 'Stipendio', pattern: 'accredito stipendio', priority: 5 },
+        
+        // BancoPosta-specific patterns
+        
+        // Alimentari (BancoPosta)
+        { category: 'Alimenti', pattern: 'lidl', priority: 10 },
+        { category: 'Alimenti', pattern: 'global fish', priority: 10 },
+        { category: 'Alimenti', pattern: 'stazione frutta', priority: 10 },
+        
+        // Trasporti (BancoPosta)
+        { category: 'Trasporti', pattern: 'pedaggio autostradale', priority: 5 },
+        { category: 'Trasporti', pattern: 'telepedaggio', priority: 5 },
+        { category: 'Trasporti', pattern: 'mooneygo', priority: 10 },
+        { category: 'Trasporti', pattern: 'enerpetroli', priority: 10 },
+        
+        // Ristorazione (BancoPosta)
+        { category: 'Ristorazione', pattern: 'justeatitaly', priority: 10 },
+        { category: 'Ristorazione', pattern: 'bar melo', priority: 10 },
+        
+        // Casa (BancoPosta)
+        { category: 'Casa', pattern: 'cossuto', priority: 10 },
+        
+        // Abbonamenti (BancoPosta)
+        { category: 'Abbonamenti', pattern: 'paypal', priority: 15 }, // Lower priority, could be many things
+        
+        // Altro/Servizi (BancoPosta)
+        { category: 'Altro', pattern: 'poste roma', priority: 10 },
+        { category: 'Altro', pattern: 'mondadori', priority: 10 },
+        { category: 'Altro', pattern: 'tabacchi', priority: 10 },
+        { category: 'Altro', pattern: 'augustarello', priority: 10 },
+        { category: 'Altro', pattern: 'r.m.g. srl', priority: 10 },
+        
+        // Generic BancoPosta transaction types
+        { category: 'Altro', pattern: 'pagamento pos', priority: 20 }, // Very low priority, most generic
+        { category: 'Altro', pattern: 'prelievo up', priority: 15 },
+        { category: 'Altro', pattern: 'acqu.distrib.automati', priority: 10 }
       ];
       
       rules.forEach(rule => {
