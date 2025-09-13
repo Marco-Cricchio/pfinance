@@ -96,16 +96,35 @@ export function CalendarChart({
   }, [dailyStats]);
 
   const getColorIntensity = (expenses: number, maxExpenses: number) => {
-    if (expenses === 0) return 'bg-gray-100';
-    const intensity = Math.min(expenses / maxExpenses, 1);
-    const hue = Math.max(0, 60 - (intensity * 60)); // Da giallo (60) a rosso (0)
-    const saturation = 70 + (intensity * 30); // Da 70% a 100%
-    const lightness = Math.max(30, 70 - (intensity * 40)); // Da 70% a 30%
+    if (expenses === 0 || maxExpenses === 0) {
+      return {
+        backgroundColor: '#374151', // gray-700 - no expenses
+        color: '#9CA3AF' // gray-400
+      };
+    }
     
-    return {
-      backgroundColor: `hsl(${hue}, ${saturation}%, ${lightness}%)`,
-      color: lightness < 50 ? '#fff' : '#000'
-    };
+    const intensity = Math.min(expenses / maxExpenses, 1);
+    
+    // Three discrete color levels: Green, Yellow, Red
+    if (intensity <= 0.33) {
+      // Low expenses: Green
+      return {
+        backgroundColor: 'hsl(120, 60%, 45%)', // Green
+        color: '#fff'
+      };
+    } else if (intensity <= 0.66) {
+      // Medium expenses: Yellow  
+      return {
+        backgroundColor: 'hsl(60, 80%, 50%)', // Yellow
+        color: '#000'
+      };
+    } else {
+      // High expenses: Red
+      return {
+        backgroundColor: 'hsl(0, 75%, 45%)', // Red
+        color: '#fff'
+      };
+    }
   };
 
   const handleDayClick = (dayStat: DailyStat) => {
@@ -154,16 +173,20 @@ export function CalendarChart({
                   </div>
                 ))}
                 {month.days.map((dayStat, index) => {
-                  const colorStyle = dayStat ? getColorIntensity(dayStat.expenses, calendarData.maxExpenses) : null;
+                  const colorStyle = dayStat ? getColorIntensity(dayStat.expenses, calendarData.maxExpenses) : {
+                    backgroundColor: '#1F2937', // gray-800 for empty days
+                    color: '#6B7280' // gray-500
+                  };
+                  
                   return (
                     <div
                       key={index}
                       className={`h-8 w-full rounded text-xs flex items-center justify-center cursor-pointer transition-all hover:scale-110 font-medium border border-slate-700 ${
                         dayStat 
                           ? 'hover:ring-2 hover:ring-blue-400' 
-                          : 'bg-slate-800 text-slate-600'
+                          : ''
                       }`}
-                      style={colorStyle && typeof colorStyle === 'object' ? colorStyle : undefined}
+                      style={colorStyle}
                       onClick={() => dayStat && handleDayClick(dayStat)}
                       title={dayStat ? `${isVisible ? `€${dayStat.expenses.toLocaleString('it-IT')}` : '€●●●.●●'} (${dayStat.count} transazioni)` : ''}
                     >
@@ -178,13 +201,11 @@ export function CalendarChart({
           {/* Legenda */}
           <div className="flex items-center justify-center space-x-2 text-xs text-slate-400 mt-4 sticky bottom-0 bg-slate-900 py-2">
             <span>Meno</span>
-            <div className="flex space-x-1">
-              <div className="w-3 h-3 bg-slate-800 rounded border border-slate-600"></div>
-              <div className="w-3 h-3 rounded border border-slate-600" style={{backgroundColor: 'hsl(60, 70%, 70%)'}}></div>
-              <div className="w-3 h-3 rounded border border-slate-600" style={{backgroundColor: 'hsl(45, 85%, 55%)'}}></div>
-              <div className="w-3 h-3 rounded border border-slate-600" style={{backgroundColor: 'hsl(30, 100%, 45%)'}}></div>
-              <div className="w-3 h-3 rounded border border-slate-600" style={{backgroundColor: 'hsl(15, 100%, 35%)'}}></div>
-              <div className="w-3 h-3 rounded border border-slate-600" style={{backgroundColor: 'hsl(0, 100%, 30%)'}}></div>
+            <div className="flex space-x-2">
+              <div className="w-4 h-4 rounded border border-slate-600" style={{backgroundColor: '#374151'}} title="Nessuna spesa (0%)"></div>
+              <div className="w-4 h-4 rounded border border-slate-600" style={{backgroundColor: 'hsl(120, 60%, 45%)'}} title="Spese basse (0-33%)"></div>
+              <div className="w-4 h-4 rounded border border-slate-600" style={{backgroundColor: 'hsl(60, 80%, 50%)'}} title="Spese medie (34-66%)"></div>
+              <div className="w-4 h-4 rounded border border-slate-600" style={{backgroundColor: 'hsl(0, 75%, 45%)'}} title="Spese elevate (67-100%)"></div>
             </div>
             <span>Più</span>
           </div>
