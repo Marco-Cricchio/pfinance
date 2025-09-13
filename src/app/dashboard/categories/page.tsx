@@ -10,6 +10,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs } from '@/components/ui/tabs';
 import { Pagination } from '@/components/ui/pagination';
 import { Plus, Edit2, Trash2, Save, X, Eye, Search, ChevronDown, ChevronUp, Filter, AlertTriangle } from 'lucide-react';
+import { useAmountVisibility } from '@/contexts/AmountVisibilityContext';
 
 interface Category {
   id: number;
@@ -52,6 +53,7 @@ interface TransactionManagementItem {
 }
 
 export default function CategoriesPage() {
+  const { obfuscateAmount } = useAmountVisibility();
   const [categories, setCategories] = useState<Category[]>([]);
   const [rules, setRules] = useState<CategoryRule[]>([]);
   const [preview, setPreview] = useState<PreviewItem[]>([]);
@@ -1407,7 +1409,7 @@ export default function CategoriesPage() {
                         <span className={`font-medium ${
                           transaction.type === 'income' ? 'text-green-600' : 'text-red-600'
                         }`}>
-                          {transaction.type === 'income' ? '+' : '-'}€{Math.abs(transaction.amount).toFixed(2)}
+                          {transaction.type === 'income' ? '+' : '-'}{obfuscateAmount(Math.abs(transaction.amount))}
                         </span>
                       </div>
                     ))}
@@ -1473,7 +1475,7 @@ export default function CategoriesPage() {
                       <span className={`font-medium text-sm shrink-0 ${
                         transaction.type === 'income' ? 'text-green-600' : 'text-red-600'
                       }`}>
-                        {transaction.type === 'income' ? '+' : '-'}€{Math.abs(transaction.amount).toFixed(2)}
+                        {transaction.type === 'income' ? '+' : '-'}{obfuscateAmount(Math.abs(transaction.amount))}
                       </span>
                     </div>
                   ))}
