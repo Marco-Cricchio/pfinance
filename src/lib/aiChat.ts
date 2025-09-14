@@ -1,13 +1,47 @@
 import OpenAI from 'openai';
 import { ParsedData } from '@/types/transaction';
 import { FinancialContext, ChatMessage } from '@/types/chat';
-import { getParsedData } from '@/lib/database';
+import { getParsedData, getOpenRouterApiKey, getUserSecrets } from '@/lib/database';
 
-const openai = new OpenAI({
-  baseURL: 'https://openrouter.ai/api/v1',
-  apiKey: process.env.NEXT_PUBLIC_OPENROUTER_API_KEY,
-  dangerouslyAllowBrowser: true,
-});
+// Initialize OpenAI client with dynamic API key
+let openai: OpenAI | null = null;
+
+// Function to get or create OpenAI client with current API key
+function getOpenAIClient(): OpenAI | null {
+  try {
+    // First try to get from database
+    const secrets = getUserSecrets();
+    let apiKey: string | null = null;
+    
+    // For encrypted API key, we need system password which we don't have here
+    // So we'll use a different approach - check if there's an API key available
+    if (secrets?.openrouter_api_key_encrypted) {
+      // We can't decrypt here without system password, so return null
+      // The calling function should handle this case
+      return null;
+    }
+    
+    // Fallback to environment variable for backward compatibility
+    apiKey = process.env.NEXT_PUBLIC_OPENROUTER_API_KEY || null;
+    
+    if (!apiKey || apiKey === 'your_openrouter_api_key_here') {
+      return null;
+    }
+    
+    if (!openai) {
+      openai = new OpenAI({
+        baseURL: 'https://openrouter.ai/api/v1',
+        apiKey: apiKey,
+        dangerouslyAllowBrowser: true,
+      });
+    }
+    
+    return openai;
+  } catch (error) {
+    console.error('Error getting OpenAI client:', error);
+    return null;
+  }
+}
 
 // Lista dei modelli in ordine di preferenza (riutilizzando da ai.ts)
 const AI_MODELS = [
@@ -140,11 +174,12 @@ function formatMessagesForOpenAI(messages: ChatMessage[], systemPrompt: string):
  */
 async function testModelValidity(
   model: string,
-  openAIMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[]
+  openAIMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[],
+  openaiClient: OpenAI
 ): Promise<boolean> {
   try {
     
-    const stream = await openai.chat.completions.create({
+    const stream = await openaiClient.chat.completions.create({
       model,
       messages: openAIMessages,
       temperature: 0.7,
@@ -185,9 +220,10 @@ async function testModelValidity(
  */
 async function createModelStream(
   model: string,
-  openAIMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[]
+  openAIMessages: OpenAI.Chat.Completions.ChatCompletionMessageParam[],
+  openaiClient: OpenAI
 ): Promise<ReadableStream<Uint8Array>> {
-  const stream = await openai.chat.completions.create({
+  const stream = await openaiClient.chat.completions.create({
     model,
     messages: openAIMessages,
     temperature: 0.7,
@@ -250,16 +286,45 @@ async function createModelStream(
 
 /**
  * Genera una risposta chat con streaming support e fallback automatico
+ * Ora supporta API key crittografata nel database
  */
 export async function generateChatCompletion(
   conversationHistory: ChatMessage[],
-  newUserMessage: string
+  newUserMessage: string,
+  systemPassword?: string
 ): Promise<ReadableStream<Uint8Array>> {
-  // Verifica API key
-  if (!process.env.NEXT_PUBLIC_OPENROUTER_API_KEY || 
-      process.env.NEXT_PUBLIC_OPENROUTER_API_KEY === 'your_openrouter_api_key_here') {
-    throw new Error('API key OpenRouter non configurata. Configura NEXT_PUBLIC_OPENROUTER_API_KEY nel file .env.local');
+  // Check if we have encrypted API key that needs system password
+  const secrets = await getUserSecrets();
+  let apiKey: string | null = null;
+  
+  if (secrets?.openrouter_api_key_encrypted) {
+    if (!systemPassword) {
+      throw new Error('API key OpenRouter è configurata ma richiede autenticazione di sistema. Vai nelle Impostazioni > Credenziali per configurarla.');
+    }
+    
+    try {
+      apiKey = await getOpenRouterApiKey(systemPassword);
+      if (!apiKey) {
+        throw new Error('Impossibile decrittare l\'API key OpenRouter. Verifica la password di sistema.');
+      }
+    } catch (error) {
+      throw new Error('Errore durante la decrittografia dell\'API key OpenRouter.');
+    }
+  } else {
+    // Fallback to environment variable
+    apiKey = process.env.NEXT_PUBLIC_OPENROUTER_API_KEY || null;
+    
+    if (!apiKey || apiKey === 'your_openrouter_api_key_here') {
+      throw new Error('API key OpenRouter non configurata. Vai nelle Impostazioni > Credenziali per configurarla.');
+    }
   }
+  
+  // Create OpenAI client with the obtained API key
+  const openaiClient = new OpenAI({
+    baseURL: 'https://openrouter.ai/api/v1',
+    apiKey: apiKey,
+    dangerouslyAllowBrowser: true,
+  });
 
   const financialContext = prepareFinancialContext();
   const systemPrompt = generateSystemPrompt(financialContext);
@@ -285,10 +350,10 @@ export async function generateChatCompletion(
     
     try {
       // Prima testa se il modello funziona
-      const isWorking = await testModelValidity(model, openAIMessages);
+      const isWorking = await testModelValidity(model, openAIMessages, openaiClient);
       
       if (isWorking) {
-        return await createModelStream(model, openAIMessages);
+        return await createModelStream(model, openAIMessages, openaiClient);
       } else {
         continue;
       }

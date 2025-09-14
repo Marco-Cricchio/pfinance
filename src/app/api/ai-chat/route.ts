@@ -71,7 +71,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body: ChatApiRequest = await request.json();
-    const { message, userId = 'default_user', sessionId } = body;
+    const { message, userId = 'default_user', sessionId, systemPassword } = body;
     
     if (!message || message.trim().length === 0) {
       return NextResponse.json({
@@ -106,7 +106,8 @@ export async function POST(request: NextRequest) {
       // Genera risposta AI con streaming
       const stream = await generateChatCompletion(
         conversationHistory.slice(0, -1), // Escludi l'ultimo messaggio (quello appena inserito)
-        message.trim()
+        message.trim(),
+        systemPassword // Pass system password for API key decryption
       );
       
       // Crea un tee dello stream per poter leggere i dati sia per il client che per il salvataggio

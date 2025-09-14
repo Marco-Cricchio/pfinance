@@ -21,6 +21,7 @@ export interface ChatApiRequest {
   message: string;
   userId?: string;
   sessionId?: string;
+  systemPassword?: string;
 }
 
 export interface ChatApiResponse {

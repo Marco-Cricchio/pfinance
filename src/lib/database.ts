@@ -179,6 +179,21 @@ try {
     
     -- Insert default record if not exists
     INSERT OR IGNORE INTO system_initialization (id) VALUES (1);
+    
+    -- User secrets table for encrypted credentials
+    CREATE TABLE IF NOT EXISTS user_secrets (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      deobfuscation_password_encrypted TEXT,
+      deobfuscation_password_hash TEXT,
+      openrouter_api_key_encrypted TEXT,
+      encryption_salt TEXT,
+      is_default_password BOOLEAN DEFAULT 1,
+      last_updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    
+    -- Insert default record if not exists
+    INSERT OR IGNORE INTO user_secrets (id) VALUES (1);
     `);
     
     // Keep initial balance at €1000.00 (no forced update)
@@ -200,6 +215,14 @@ try {
       `);
     }
     
+    
+    // Migration for user_secrets table password hash field
+    const userSecretsInfo = db.prepare("PRAGMA table_info(user_secrets)").all() as Array<{name: string}>;
+    const hasPasswordHash = userSecretsInfo.some(col => col.name === 'deobfuscation_password_hash');
+    
+    if (!hasPasswordHash) {
+      db.exec('ALTER TABLE user_secrets ADD COLUMN deobfuscation_password_hash TEXT');
+    }
     
     // Create missing indexes after migration
     db.exec(`
@@ -229,8 +252,16 @@ try {
       if (!initStatus?.categories_initialized && existingCategories.count === 0) {
         console.warn('ℹ️ Starting categories initialization...');
         initializeDefaultCategories();
+        // Also initialize default secrets
+        import('./database').then(({ initializeDefaultSecrets }) => {
+          initializeDefaultSecrets();
+        });
       } else {
         console.warn('✓ Categories already initialized, skipping...');
+        // Check if secrets need initialization
+        import('./database').then(({ initializeDefaultSecrets }) => {
+          initializeDefaultSecrets();
+        });
       }
     })
     .catch(error => {
@@ -1158,6 +1189,162 @@ export function clearChatSession(sessionId: string): boolean {
   } catch (error) {
     console.error('Error clearing chat session:', error);
     return false;
+  }
+}
+
+// ============================================================================
+// SECRETS MANAGEMENT FUNCTIONS
+// ============================================================================
+
+export interface UserSecrets {
+  id: number;
+  deobfuscation_password_encrypted?: string;
+  deobfuscation_password_hash?: string;
+  openrouter_api_key_encrypted?: string;
+  encryption_salt?: string;
+  is_default_password: boolean;
+  last_updated_at: string;
+  created_at: string;
+}
+
+// Get user secrets
+export function getUserSecrets(): UserSecrets | null {
+  try {
+    const stmt = db.prepare('SELECT * FROM user_secrets WHERE id = 1');
+    return stmt.get() as UserSecrets | null;
+  } catch (error) {
+    console.error('Error getting user secrets:', error);
+    return null;
+  }
+}
+
+// Initialize default secrets (called on first run)
+export async function initializeDefaultSecrets(): Promise<boolean> {
+  try {
+    const { generateSalt, encryptSecret } = await import('./crypto');
+    const { createHash } = await import('crypto');
+    
+    const secrets = getUserSecrets();
+    if (secrets?.deobfuscation_password_encrypted) {
+      return true; // Already initialized
+    }
+    
+    const salt = generateSalt();
+    const defaultPassword = 'pFinance';
+    const encryptedPassword = encryptSecret(defaultPassword, 'system_default', salt);
+    
+    // Create hash for default password too
+    const passwordHash = createHash('sha256').update(defaultPassword + salt).digest('hex');
+    
+    const stmt = db.prepare(`
+      UPDATE user_secrets 
+      SET deobfuscation_password_encrypted = ?,
+          deobfuscation_password_hash = ?,
+          encryption_salt = ?,
+          is_default_password = 1,
+          last_updated_at = CURRENT_TIMESTAMP
+      WHERE id = 1
+    `);
+    
+    stmt.run(encryptedPassword, passwordHash, salt);
+    return true;
+  } catch (error) {
+    console.error('Error initializing default secrets:', error);
+    return false;
+  }
+}
+
+// Update deobfuscation password
+export async function updateDeobfuscationPassword(newPassword: string, systemPassword: string): Promise<boolean> {
+  try {
+    const { generateSalt, encryptSecret } = await import('./crypto');
+    const { createHash } = await import('crypto');
+    
+    const salt = generateSalt();
+    const encryptedPassword = encryptSecret(newPassword, systemPassword, salt);
+    
+    // Create a hash of the password for easy verification
+    const passwordHash = createHash('sha256').update(newPassword + salt).digest('hex');
+    
+    const stmt = db.prepare(`
+      UPDATE user_secrets 
+      SET deobfuscation_password_encrypted = ?,
+          deobfuscation_password_hash = ?,
+          encryption_salt = ?,
+          is_default_password = 0,
+          last_updated_at = CURRENT_TIMESTAMP
+      WHERE id = 1
+    `);
+    
+    stmt.run(encryptedPassword, passwordHash, salt);
+    return true;
+  } catch (error) {
+    console.error('Error updating deobfuscation password:', error);
+    return false;
+  }
+}
+
+// Update OpenRouter API key
+export async function updateOpenRouterApiKey(apiKey: string, systemPassword: string): Promise<boolean> {
+  try {
+    const { encryptSecret } = await import('./crypto');
+    const secrets = getUserSecrets();
+    
+    if (!secrets?.encryption_salt) {
+      throw new Error('Encryption salt not found. Please set deobfuscation password first.');
+    }
+    
+    const encryptedApiKey = encryptSecret(apiKey, systemPassword, secrets.encryption_salt);
+    
+    const stmt = db.prepare(`
+      UPDATE user_secrets 
+      SET openrouter_api_key_encrypted = ?,
+          last_updated_at = CURRENT_TIMESTAMP
+      WHERE id = 1
+    `);
+    
+    stmt.run(encryptedApiKey);
+    return true;
+  } catch (error) {
+    console.error('Error updating OpenRouter API key:', error);
+    return false;
+  }
+}
+
+// Get decrypted deobfuscation password
+export async function getDeobfuscationPassword(systemPassword: string): Promise<string | null> {
+  try {
+    const { decryptSecret } = await import('./crypto');
+    const secrets = getUserSecrets();
+    
+    if (!secrets?.deobfuscation_password_encrypted || !secrets?.encryption_salt) {
+      return null;
+    }
+    
+    // For default password, use system_default as decryption key
+    const decryptionKey = secrets.is_default_password ? 'system_default' : systemPassword;
+    
+    return decryptSecret(secrets.deobfuscation_password_encrypted, decryptionKey, secrets.encryption_salt);
+  } catch (error) {
+    console.error('Error getting deobfuscation password:', error);
+    return null;
+  }
+}
+
+// Get decrypted OpenRouter API key
+export async function getOpenRouterApiKey(systemPassword: string): Promise<string | null> {
+  try {
+    const { decryptSecret } = await import('./crypto');
+    const secrets = getUserSecrets();
+    
+    if (!secrets?.openrouter_api_key_encrypted || !secrets?.encryption_salt) {
+      return null;
+    }
+    
+    return decryptSecret(secrets.openrouter_api_key_encrypted, systemPassword, secrets.encryption_salt);
+  } catch (error) {
+    console.error('Error getting OpenRouter API key:', error);
+    return null;
   }
 }
 

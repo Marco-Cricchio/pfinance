@@ -1,10 +1,12 @@
 'use client';
 
-import { createContext, useContext, useState, useCallback, ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, ReactNode, useEffect } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Info } from 'lucide-react';
 
 interface AmountVisibilityContextType {
   isVisible: boolean;
@@ -24,6 +26,25 @@ export function AmountVisibilityProvider({ children }: AmountVisibilityProviderP
   const [isLoading, setIsLoading] = useState(false);
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
   const [password, setPassword] = useState('');
+  const [isDefaultPassword, setIsDefaultPassword] = useState(true);
+  const [secretsLoading, setSecretsLoading] = useState(true);
+
+  // Load secrets status on component mount
+  useEffect(() => {
+    const loadSecretsStatus = async () => {
+      try {
+        const response = await fetch('/api/secrets');
+        const data = await response.json();
+        setIsDefaultPassword(data.isDefaultPassword);
+      } catch (error) {
+        console.error('Error loading secrets status:', error);
+      } finally {
+        setSecretsLoading(false);
+      }
+    };
+
+    loadSecretsStatus();
+  }, []);
 
   const toggleVisibility = useCallback(async () => {
     if (isVisible) {
@@ -44,6 +65,7 @@ export function AmountVisibilityProvider({ children }: AmountVisibilityProviderP
     setIsLoading(true);
     
     try {
+      // Always use the API for password verification
       const response = await fetch('/api/verify-password', {
         method: 'POST',
         headers: {
@@ -59,7 +81,7 @@ export function AmountVisibilityProvider({ children }: AmountVisibilityProviderP
         setShowPasswordDialog(false);
         setPassword('');
       } else {
-        alert('Password errata!');
+        alert(result.error || 'Password errata!');
       }
     } catch (error) {
       console.error('Error verifying password:', error);
@@ -105,6 +127,20 @@ export function AmountVisibilityProvider({ children }: AmountVisibilityProviderP
               Inserisci la password per visualizzare gli importi reali
             </DialogDescription>
           </DialogHeader>
+          
+          {isDefaultPassword && !secretsLoading && (
+            <Alert className="mb-4">
+              <Info className="h-4 w-4" />
+              <AlertDescription>
+                <strong>Password predefinita:</strong> pFinance
+                <br />
+                <span className="text-xs text-muted-foreground">
+                  Puoi modificare questa password nelle Impostazioni {'>'}  Gestione Credenziali
+                </span>
+              </AlertDescription>
+            </Alert>
+          )}
+          
           <div className="grid gap-4 py-4">
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="password" className="text-right">

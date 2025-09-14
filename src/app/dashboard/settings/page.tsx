@@ -10,6 +10,7 @@ import { DatabaseBackup } from '@/components/settings/DatabaseBackup';
 import { DatabaseRestore } from '@/components/settings/DatabaseRestore';
 import { DatabaseInfo } from '@/components/settings/DatabaseInfo';
 import { BalanceManager } from '@/components/BalanceManager';
+import { SecretsManager } from '@/components/settings/SecretsManager';
 
 export default function SettingsPage() {
   const [loading, setLoading] = useState(false);
@@ -79,7 +80,7 @@ export default function SettingsPage() {
       </div>
 
       <Tabs defaultValue="database" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="database" className="flex items-center gap-2">
             <Database className="h-4 w-4" />
             Database
@@ -87,6 +88,10 @@ export default function SettingsPage() {
           <TabsTrigger value="balance" className="flex items-center gap-2">
             <Wallet className="h-4 w-4" />
             Gestione Saldi
+          </TabsTrigger>
+          <TabsTrigger value="secrets" className="flex items-center gap-2">
+            <Settings className="h-4 w-4" />
+            Credenziali
           </TabsTrigger>
           <TabsTrigger value="actions" className="flex items-center gap-2">
             <Zap className="h-4 w-4" />
@@ -125,6 +130,11 @@ export default function SettingsPage() {
               <BalanceManager />
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* Secrets Management Tab */}
+        <TabsContent value="secrets" className="space-y-6">
+          <SecretsManager />
         </TabsContent>
 
         {/* Quick Actions Tab */}
