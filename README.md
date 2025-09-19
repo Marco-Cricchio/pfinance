@@ -86,19 +86,6 @@ The application uses a plugin-style parser architecture:
 3. **Fallback Support**: Legacy parser for unsupported formats
 4. **Unified Output**: All parsers produce standard Transaction objects
 
-## 🔧 Configuration
-
-### Environment Variables
-
-All environment variables are **optional**. The application works without any configuration.
-
-| Variable | Description | Required | Default |
-|----------|-------------|----------|----------|
-| `NEXT_PUBLIC_OPENROUTER_API_KEY` | OpenRouter API key for AI categorization and analysis | No | (AI features disabled) |
-| `SHOW_AMOUNTS` | Password for showing real amounts instead of obfuscated values | No | (obfuscated by default) |
-
-> **Note**: To use AI features, create a `.env.local` file in the root directory and add your OpenRouter API key.
-
 ### Database Schema
 
 The application automatically creates SQLite tables:
