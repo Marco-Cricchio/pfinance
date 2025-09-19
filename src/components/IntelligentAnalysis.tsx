@@ -4,7 +4,7 @@ import { useMemo, useState, useEffect } from 'react';
 import { ParsedData, Transaction } from '@/types/transaction';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Filter, X, ChevronDown, ChevronUp } from 'lucide-react';
+import { Filter, X, ChevronDown, ChevronUp, ToggleLeft, ToggleRight } from 'lucide-react';
 import { useAmountVisibility } from '@/contexts/AmountVisibilityContext';
 import { SeasonalAnalysisCard } from './analysis/cards/SeasonalAnalysisCard';
 import { ParetoAnalysisCard } from './analysis/cards/ParetoAnalysisCard';
@@ -47,6 +47,7 @@ export function IntelligentAnalysis({ data }: IntelligentAnalysisProps) {
   const [selectedYears, setSelectedYears] = useState<Set<string>>(new Set(['Tutti']));
   const [selectedMonths, setSelectedMonths] = useState<Set<string>>(new Set(['Tutti']));
   const [isFiltersCollapsed, setIsFiltersCollapsed] = useState(true);
+  const [allCategoriesSelected, setAllCategoriesSelected] = useState(true);
 
   // Calculate current account balance based on transactions
   const calculateAccountBalance = (transactions: Transaction[]) => {
@@ -113,6 +114,17 @@ export function IntelligentAnalysis({ data }: IntelligentAnalysisProps) {
     const categories = [...new Set(data.transactions.map(t => t.category || 'Altro'))];
     return ['Tutte', ...categories.sort()];
   }, [data]);
+
+  // Sincronizza lo stato del toggle con le categorie selezionate
+  useEffect(() => {
+    if (selectedCategories.has('Tutte')) {
+      setAllCategoriesSelected(false);
+    } else {
+      const totalSpecificCategories = availableCategories.filter(cat => cat !== 'Tutte').length;
+      const selectedSpecificCategories = Array.from(selectedCategories).filter(cat => cat !== 'Tutte').length;
+      setAllCategoriesSelected(selectedSpecificCategories === totalSpecificCategories && totalSpecificCategories > 0);
+    }
+  }, [selectedCategories, availableCategories]);
 
   // Filtra transazioni per categoria, anno e mese
   const filteredTransactions = useMemo(() => {
@@ -259,6 +271,21 @@ export function IntelligentAnalysis({ data }: IntelligentAnalysisProps) {
     setSelectedCategories(new Set(['Tutte']));
     setSelectedYears(new Set(['Tutti']));
     setSelectedMonths(new Set(['Tutti']));
+    setAllCategoriesSelected(true);
+  };
+
+  // Toggle per selezionare/deselezionare tutte le categorie
+  const toggleAllCategories = () => {
+    if (allCategoriesSelected) {
+      // Deseleziona tutte le categorie tranne 'Tutte'
+      setSelectedCategories(new Set(['Tutte']));
+      setAllCategoriesSelected(false);
+    } else {
+      // Seleziona tutte le categorie disponibili tranne 'Tutte'
+      const allSpecificCategories = availableCategories.filter(cat => cat !== 'Tutte');
+      setSelectedCategories(new Set(allSpecificCategories));
+      setAllCategoriesSelected(true);
+    }
   };
 
   if (!data) {
@@ -463,7 +490,26 @@ export function IntelligentAnalysis({ data }: IntelligentAnalysisProps) {
           
           {/* Filtro Categorie */}
           <div>
-            <h4 className="font-medium mb-2">Categorie</h4>
+            <div className="flex items-center justify-between mb-2">
+              <h4 className="font-medium">Categorie</h4>
+              <button
+                onClick={toggleAllCategories}
+                className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors"
+                title={allCategoriesSelected ? 'Deseleziona tutte le categorie' : 'Seleziona tutte le categorie'}
+              >
+                {allCategoriesSelected ? (
+                  <>
+                    <ToggleRight className="h-4 w-4 text-green-600" />
+                    Deseleziona Tutte
+                  </>
+                ) : (
+                  <>
+                    <ToggleLeft className="h-4 w-4 text-gray-400" />
+                    Seleziona Tutte
+                  </>
+                )}
+              </button>
+            </div>
             <div className="flex flex-wrap gap-2">
               {availableCategories.map((category) => {
                 const isSelected = selectedCategories.has(category);

@@ -1,7 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { TrendingUp, TrendingDown, DollarSign, PieChart as PieChartIcon, Filter, X, Maximize2, ChevronDown, ChevronUp } from 'lucide-react';
+import { useMemo, useState, useEffect } from 'react';
+import { TrendingUp, TrendingDown, DollarSign, PieChart as PieChartIcon, Filter, X, Maximize2, ChevronDown, ChevronUp, ToggleLeft, ToggleRight } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip, Legend, Line, LineChart, ComposedChart, PieChart, Pie, Cell } from 'recharts';
 import { ParsedData, Transaction } from '@/types/transaction';
@@ -64,6 +64,7 @@ export function Dashboard({ data }: DashboardProps) {
   const [selectedMonths, setSelectedMonths] = useState<Set<string>>(new Set(['Tutti']));
   const [isFiltersCollapsed, setIsFiltersCollapsed] = useState(true);
   const [expandedChart, setExpandedChart] = useState<string | null>(null);
+  const [allCategoriesSelected, setAllCategoriesSelected] = useState(true);
 
   const { isVisible, obfuscateAmount } = useAmountVisibility();
 
@@ -124,6 +125,17 @@ export function Dashboard({ data }: DashboardProps) {
     
     return Array.from(categories).sort();
   }, [data]);
+
+  // Sincronizza lo stato del toggle con le categorie selezionate
+  useEffect(() => {
+    if (selectedCategories.has('Tutte')) {
+      setAllCategoriesSelected(false);
+    } else {
+      const totalSpecificCategories = availableCategories.filter(cat => cat !== 'Tutte').length;
+      const selectedSpecificCategories = Array.from(selectedCategories).filter(cat => cat !== 'Tutte').length;
+      setAllCategoriesSelected(selectedSpecificCategories === totalSpecificCategories && totalSpecificCategories > 0);
+    }
+  }, [selectedCategories, availableCategories]);
 
   // Filtra le transazioni in base alle categorie selezionate, anni e mesi
   const filteredTransactions = useMemo(() => {
@@ -250,6 +262,21 @@ export function Dashboard({ data }: DashboardProps) {
     setSelectedCategories(new Set(['Tutte']));
     setSelectedYears(new Set(['Tutti']));
     setSelectedMonths(new Set(['Tutti']));
+    setAllCategoriesSelected(true);
+  };
+
+  // Toggle per selezionare/deselezionare tutte le categorie
+  const toggleAllCategories = () => {
+    if (allCategoriesSelected) {
+      // Deseleziona tutte le categorie tranne 'Tutte'
+      setSelectedCategories(new Set(['Tutte']));
+      setAllCategoriesSelected(false);
+    } else {
+      // Seleziona tutte le categorie disponibili tranne 'Tutte'
+      const allSpecificCategories = availableCategories.filter(cat => cat !== 'Tutte');
+      setSelectedCategories(new Set(allSpecificCategories));
+      setAllCategoriesSelected(true);
+    }
   };
 
   const getCategoryColorClass = (category: string) => {
@@ -707,7 +734,26 @@ export function Dashboard({ data }: DashboardProps) {
           
           {/* Filtro Categorie */}
           <div>
-            <h4 className="font-medium mb-2">Categorie</h4>
+            <div className="flex items-center justify-between mb-2">
+              <h4 className="font-medium">Categorie</h4>
+              <button
+                onClick={toggleAllCategories}
+                className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors"
+                title={allCategoriesSelected ? 'Deseleziona tutte le categorie' : 'Seleziona tutte le categorie'}
+              >
+                {allCategoriesSelected ? (
+                  <>
+                    <ToggleRight className="h-4 w-4 text-green-600" />
+                    Deseleziona Tutte
+                  </>
+                ) : (
+                  <>
+                    <ToggleLeft className="h-4 w-4 text-gray-400" />
+                    Seleziona Tutte
+                  </>
+                )}
+              </button>
+            </div>
             <div className="flex flex-wrap gap-2">
               {availableCategories.map((category) => {
                 const isSelected = selectedCategories.has(category);

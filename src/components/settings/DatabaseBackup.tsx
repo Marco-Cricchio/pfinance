@@ -5,13 +5,18 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Download, Calendar, Database } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Download, Calendar, Database, Shield, Eye, EyeOff, Lock } from 'lucide-react';
 
 interface BackupOptions {
   startDate: string;
   endDate: string;
   includeCategories: boolean;
   includeRules: boolean;
+  includeBalanceHistory: boolean;
+  encrypted: boolean;
+  password: string;
+  confirmPassword: string;
 }
 
 export function DatabaseBackup() {
@@ -19,15 +24,42 @@ export function DatabaseBackup() {
     startDate: '',
     endDate: '',
     includeCategories: true,
-    includeRules: true
+    includeRules: true,
+    includeBalanceHistory: true,
+    encrypted: true, // Default to encrypted backups
+    password: '',
+    confirmPassword: ''
   });
   const [isCreatingBackup, setIsCreatingBackup] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
+
+  const validatePassword = () => {
+    if (options.encrypted) {
+      if (!options.password || options.password.length < 8) {
+        setPasswordError('La password deve essere di almeno 8 caratteri');
+        return false;
+      }
+      if (options.password !== options.confirmPassword) {
+        setPasswordError('Le password non coincidono');
+        return false;
+      }
+    }
+    setPasswordError('');
+    return true;
+  };
 
   const handleCreateBackup = async () => {
+    if (!validatePassword()) {
+      return;
+    }
+
     setIsCreatingBackup(true);
     
     try {
-      const response = await fetch('/api/database/backup', {
+      const endpoint = options.encrypted ? '/api/database/encrypted-backup' : '/api/database/backup';
+      
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -41,7 +73,7 @@ export function DatabaseBackup() {
         
         // Extract filename from Content-Disposition header
         const contentDisposition = response.headers.get('Content-Disposition');
-        let filename = 'pfinance_backup.json';
+        let filename = options.encrypted ? 'pfinance_backup_encrypted.enc' : 'pfinance_backup.json';
         if (contentDisposition) {
           const filenameMatch = contentDisposition.match(/filename="(.+)"/);
           if (filenameMatch) {
@@ -79,6 +111,15 @@ export function DatabaseBackup() {
     }));
   };
 
+  const resetPasswords = () => {
+    setOptions(prev => ({
+      ...prev,
+      password: '',
+      confirmPassword: ''
+    }));
+    setPasswordError('');
+  };
+
   const setLastNMonths = (months: number) => {
     const endDate = new Date();
     const startDate = new Date();
@@ -95,14 +136,97 @@ export function DatabaseBackup() {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Download className="h-5 w-5" />
-          Backup Database
+          {options.encrypted ? <Shield className="h-5 w-5 text-green-600" /> : <Download className="h-5 w-5" />}
+          Backup Database {options.encrypted && '🔒'}
         </CardTitle>
         <CardDescription>
-          Crea un backup completo dei tuoi dati finanziari con opzioni di filtro per periodo temporale
+          Crea un backup {options.encrypted ? 'cifrato' : 'completo'} dei tuoi dati finanziari con opzioni di filtro per periodo temporale
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
+        {/* Encryption Options */}
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <Shield className="h-4 w-4" />
+            <h4 className="font-medium">Sicurezza del Backup</h4>
+          </div>
+          
+          <div className="space-y-3">
+            <div className="flex items-center space-x-2">
+              <input
+                id="encrypted"
+                type="checkbox"
+                checked={options.encrypted}
+                onChange={(e) => {
+                  setOptions(prev => ({...prev, encrypted: e.target.checked}));
+                  if (!e.target.checked) {
+                    resetPasswords();
+                  }
+                }}
+                className="rounded border-gray-300"
+              />
+              <Label htmlFor="encrypted" className="flex items-center gap-2">
+                <Lock className="h-3 w-3" />
+                Backup Cifrato (Raccomandato)
+              </Label>
+            </div>
+            
+            {options.encrypted && (
+              <Alert>
+                <Shield className="h-4 w-4" />
+                <AlertDescription>
+                  Il backup sarà protetto con cifratura AES-256-GCM. Conserva la password in un luogo sicuro.
+                </AlertDescription>
+              </Alert>
+            )}
+          </div>
+          
+          {/* Password fields */}
+          {options.encrypted && (
+            <div className="space-y-4 p-4 border rounded-md bg-muted/30">
+              <div className="grid grid-cols-1 gap-4">
+                <div className="relative">
+                  <Label htmlFor="password">Password di Cifratura *</Label>
+                  <div className="relative">
+                    <Input
+                      id="password"
+                      type={showPassword ? 'text' : 'password'}
+                      value={options.password}
+                      onChange={(e) => setOptions(prev => ({...prev, password: e.target.value}))}
+                      placeholder="Inserisci una password sicura (min 8 caratteri)"
+                      className="pr-10"
+                    />
+                    <button
+                      type="button"
+                      className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                      onClick={() => setShowPassword(!showPassword)}
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+                
+                <div>
+                  <Label htmlFor="confirmPassword">Conferma Password *</Label>
+                  <Input
+                    id="confirmPassword"
+                    type={showPassword ? 'text' : 'password'}
+                    value={options.confirmPassword}
+                    onChange={(e) => setOptions(prev => ({...prev, confirmPassword: e.target.value}))}
+                    placeholder="Ripeti la password"
+                  />
+                </div>
+                
+                {passwordError && (
+                  <Alert variant="destructive">
+                    <AlertDescription>{passwordError}</AlertDescription>
+                  </Alert>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* Date Range Selection */}
         <div className="space-y-4">
           <div className="flex items-center gap-2">
@@ -211,6 +335,17 @@ export function DatabaseBackup() {
               />
               <Label htmlFor="includeRules">Includi Regole di Categorizzazione</Label>
             </div>
+            
+            <div className="flex items-center space-x-2">
+              <input
+                id="includeBalanceHistory"
+                type="checkbox"
+                checked={options.includeBalanceHistory}
+                onChange={(e) => setOptions(prev => ({...prev, includeBalanceHistory: e.target.checked}))}
+                className="rounded border-gray-300"
+              />
+              <Label htmlFor="includeBalanceHistory">Includi Storico Saldi</Label>
+            </div>
           </div>
         </div>
 
@@ -218,12 +353,18 @@ export function DatabaseBackup() {
         <div className="pt-4 border-t">
           <Button 
             onClick={handleCreateBackup} 
-            disabled={isCreatingBackup}
+            disabled={isCreatingBackup || (options.encrypted && (!options.password || options.password !== options.confirmPassword))}
             className="w-full"
           >
-            <Download className="h-4 w-4 mr-2" />
-            {isCreatingBackup ? 'Creazione Backup...' : 'Crea Backup'}
+            {options.encrypted ? <Shield className="h-4 w-4 mr-2" /> : <Download className="h-4 w-4 mr-2" />}
+            {isCreatingBackup ? 'Creazione Backup...' : (options.encrypted ? 'Crea Backup Cifrato' : 'Crea Backup')}
           </Button>
+          
+          {options.encrypted && (
+            <div className="mt-2 text-xs text-muted-foreground text-center">
+              💡 Il file sarà salvato con estensione .enc
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>

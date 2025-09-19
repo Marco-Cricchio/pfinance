@@ -2,14 +2,17 @@
 
 import { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Upload, AlertTriangle, CheckCircle, FileText, Info, RefreshCw } from 'lucide-react';
+import { Upload, AlertTriangle, CheckCircle, FileText, Info, RefreshCw, Shield, Eye, EyeOff, Lock } from 'lucide-react';
 
 interface RestoreResults {
   transactions: { inserted: number; duplicates: number };
   categories: { inserted: number; errors: number };
   rules: { inserted: number; errors: number };
+  file_balances?: { inserted: number; errors: number };
 }
 
 interface BackupMetadata {
@@ -20,6 +23,8 @@ interface BackupMetadata {
     from: string;
     to: string;
   };
+  file_created_at?: string;
+  algorithm?: string;
 }
 
 export function DatabaseRestore() {
@@ -30,25 +35,39 @@ export function DatabaseRestore() {
   const [backupMetadata, setBackupMetadata] = useState<BackupMetadata | null>(null);
   const [error, setError] = useState<string>('');
   const [success, setSuccess] = useState<string>('');
+  const [password, setPassword] = useState<string>('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [isEncrypted, setIsEncrypted] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      if (!file.name.endsWith('.json')) {
-        setError('Seleziona un file JSON di backup valido');
+      const isEncryptedFile = file.name.endsWith('.enc');
+      const isJsonFile = file.name.endsWith('.json');
+      
+      if (!isEncryptedFile && !isJsonFile) {
+        setError('Seleziona un file di backup valido (.json o .enc)');
         return;
       }
+      
+      setIsEncrypted(isEncryptedFile);
       setSelectedFile(file);
       setError('');
       setRestoreResults(null);
       setBackupMetadata(null);
+      setPassword('');
     }
   };
 
   const handleRestore = async () => {
     if (!selectedFile) {
       setError('Seleziona prima un file di backup');
+      return;
+    }
+
+    if (isEncrypted && !password) {
+      setError('Password richiesta per i backup cifrati');
       return;
     }
 
@@ -60,8 +79,13 @@ export function DatabaseRestore() {
       const formData = new FormData();
       formData.append('file', selectedFile);
       formData.append('replaceExisting', replaceExisting.toString());
+      
+      if (isEncrypted) {
+        formData.append('password', password);
+      }
 
-      const response = await fetch('/api/database/restore', {
+      const endpoint = isEncrypted ? '/api/database/encrypted-restore' : '/api/database/restore';
+      const response = await fetch(endpoint, {
         method: 'POST',
         body: formData,
       });
@@ -93,6 +117,9 @@ export function DatabaseRestore() {
     setRestoreResults(null);
     setBackupMetadata(null);
     setReplaceExisting(false);
+    setPassword('');
+    setIsEncrypted(false);
+    setShowPassword(false);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -102,11 +129,11 @@ export function DatabaseRestore() {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Upload className="h-5 w-5" />
-          Restore Database
+          {isEncrypted ? <Shield className="h-5 w-5 text-green-600" /> : <Upload className="h-5 w-5" />}
+          Restore Database {isEncrypted && '🔒'}
         </CardTitle>
         <CardDescription>
-          Ripristina i tuoi dati da un file di backup precedentemente creato
+          Ripristina i tuoi dati da un file di backup {isEncrypted ? 'cifrato' : ''} precedentemente creato
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -145,7 +172,7 @@ export function DatabaseRestore() {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".json"
+                accept=".json,.enc"
                 onChange={handleFileSelect}
                 className="file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90 w-full"
               />
@@ -154,16 +181,58 @@ export function DatabaseRestore() {
             {selectedFile && (
               <div className="p-3 bg-muted rounded-md">
                 <div className="flex items-center gap-2">
-                  <FileText className="h-4 w-4" />
+                  {isEncrypted ? <Shield className="h-4 w-4 text-green-600" /> : <FileText className="h-4 w-4" />}
                   <span className="font-medium">{selectedFile.name}</span>
+                  {isEncrypted && <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">CIFRATO</span>}
                 </div>
                 <div className="text-sm text-muted-foreground">
                   Dimensione: {Math.round(selectedFile.size / 1024)} KB
+                  {isEncrypted && <span className="ml-2">• Tipo: Backup Cifrato</span>}
                 </div>
               </div>
             )}
           </div>
         </div>
+
+        {/* Password Input for Encrypted Backups */}
+        {isEncrypted && selectedFile && (
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <Lock className="h-4 w-4" />
+              <h4 className="font-medium">Decifratura Backup</h4>
+            </div>
+            
+            <div className="p-4 border rounded-md bg-muted/30">
+              <div className="relative">
+                <Label htmlFor="decryptPassword">Password di Decifratura *</Label>
+                <div className="relative mt-1">
+                  <Input
+                    id="decryptPassword"
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Inserisci la password per decifrare il backup"
+                    className="pr-10"
+                  />
+                  <button
+                    type="button"
+                    className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                    onClick={() => setShowPassword(!showPassword)}
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+              
+              <Alert className="mt-3">
+                <Shield className="h-4 w-4" />
+                <AlertDescription>
+                  Inserisci la password utilizzata durante la creazione del backup cifrato.
+                </AlertDescription>
+              </Alert>
+            </div>
+          </div>
+        )}
 
         {/* Restore Options */}
         <div className="space-y-4">
@@ -216,7 +285,13 @@ export function DatabaseRestore() {
                 <div className="text-sm space-y-1">
                   <div>Versione: {backupMetadata.version}</div>
                   <div>Creato: {new Date(backupMetadata.created_at).toLocaleString('it-IT')}</div>
+                  {backupMetadata.file_created_at && (
+                    <div>File Creato: {new Date(backupMetadata.file_created_at).toLocaleString('it-IT')}</div>
+                  )}
                   <div>Transazioni: {backupMetadata.total_transactions}</div>
+                  {backupMetadata.algorithm && (
+                    <div>Algoritmo: {backupMetadata.algorithm}</div>
+                  )}
                   {backupMetadata.date_range && (
                     <div>
                       Periodo: {backupMetadata.date_range.from} → {backupMetadata.date_range.to}
@@ -250,6 +325,16 @@ export function DatabaseRestore() {
                   <div>❌ Errori: {restoreResults.rules.errors}</div>
                 </div>
               </div>
+              
+              {restoreResults.file_balances && (
+                <div className="p-3 border rounded-md">
+                  <h5 className="font-medium">Saldi File</h5>
+                  <div className="text-sm text-muted-foreground">
+                    <div>✅ Inseriti: {restoreResults.file_balances.inserted}</div>
+                    <div>❌ Errori: {restoreResults.file_balances.errors}</div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -258,11 +343,11 @@ export function DatabaseRestore() {
         <div className="pt-4 border-t flex gap-3">
           <Button 
             onClick={handleRestore} 
-            disabled={!selectedFile || isRestoring}
+            disabled={!selectedFile || isRestoring || (isEncrypted && !password)}
             className="flex-1"
           >
-            <Upload className="h-4 w-4 mr-2" />
-            {isRestoring ? 'Ripristino in corso...' : 'Inizia Restore'}
+            {isEncrypted ? <Shield className="h-4 w-4 mr-2" /> : <Upload className="h-4 w-4 mr-2" />}
+            {isRestoring ? 'Ripristino in corso...' : (isEncrypted ? 'Inizia Restore Cifrato' : 'Inizia Restore')}
           </Button>
           
           {success && (

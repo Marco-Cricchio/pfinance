@@ -4,6 +4,7 @@
 
 ## ✨ Key Features
 
+- **🔐 Encrypted Backups**: Military-grade AES-256-GCM encryption for secure data backups
 - **Multi-Format PDF Parsing**: Supports multiple bank statement formats including BancoPosta
 - **AI-Powered Categorization**: Automatic transaction categorization with OpenRouter API integration
 - **Interactive Dashboard**: Real-time financial analytics with charts and insights
@@ -128,6 +129,26 @@ The test suite includes:
 3. **Review & Edit**: Manually adjust categories as needed
 4. **Analytics**: View spending patterns, trends, and insights
 5. **AI Chat**: Ask the AI advisor questions about your finances
+6. **🔐 Backup & Restore**: Create encrypted backups of all your financial data
+
+### Encrypted Backups
+
+pFinance now includes **military-grade encrypted backups** to protect your sensitive financial data:
+
+- **AES-256-GCM Encryption**: Industry-standard encryption with authenticated encryption
+- **Custom Passwords**: Each backup is protected with your chosen password  
+- **Complete Data Export**: Includes transactions, categories, rules, balances, and audit logs
+- **Legacy Compatibility**: Existing JSON backups continue to work seamlessly
+- **Secure Format**: Files use `.enc` extension and structured metadata
+
+**How to use:**
+1. Go to **Settings** → **Database Backup**
+2. Enable **"Backup Cifrato (Raccomandato)"**
+3. Set a strong password (min 8 characters)
+4. Configure date range and options
+5. Click **"Crea Backup Cifrato"**
+
+For detailed instructions and security considerations, see [📚 **Encrypted Backups Documentation**](docs/ENCRYPTED_BACKUPS.md)
 
 ## 🤝 Contributing
 
