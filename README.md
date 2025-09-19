@@ -7,7 +7,7 @@
 - **🔐 Encrypted Backups**: Military-grade AES-256-GCM encryption for secure data backups
 - **📊 Universal Category Toggle**: One-click toggle to show/hide all categories across all dashboard views
 - **🤖 AI-Powered Analysis**: Three distinct AI analysis modes - Overview Dashboard, Advanced Analytics, and Intelligent Analysis
-- **📋 Multi-Format PDF Parsing**: Supports multiple bank statement formats including BancoPosta
+- **📋 Multi-Format PDF Parsing**: Supports multiple bank statement formats
 - **🏷️ Smart Categorization**: Automatic transaction categorization with OpenRouter API integration and custom rules
 - **📈 Interactive Dashboards**: Real-time financial analytics with advanced charts and insights
 - **🚫 Smart Duplicate Detection**: Prevents duplicate transaction imports with intelligent matching
@@ -27,7 +27,7 @@
 
 1. Clone the repository:
 ```bash
-git clone <repository-url>
+git clone https://github.com/Marco-Cricchio/pfinance.git
 cd pfinance
 ```
 
