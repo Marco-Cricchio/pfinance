@@ -21,7 +21,7 @@
 
 - Node.js 18+ 
 - npm or yarn
-- OpenRouter API key (for AI features)
+- OpenRouter API key (optional - for AI features)
 
 ### Installation
 
@@ -36,26 +36,12 @@ cd pfinance
 npm install
 ```
 
-3. Set up environment variables:
-```bash
-cp .env.example .env.local
-```
-
-Edit `.env.local` with your configuration:
-```env
-# OpenRouter API Key for AI features (required)
-NEXT_PUBLIC_OPENROUTER_API_KEY=your_openrouter_api_key_here
-
-# Password for showing real amounts instead of obfuscated values (optional)
-SHOW_AMOUNTS=your_password_here
-```
-
-4. Start the development server:
+3. Start the development server:
 ```bash
 npm run dev
 ```
 
-5. Open [http://localhost:3000](http://localhost:3000) to view the application.
+4. Open [http://localhost:3000](http://localhost:3000) to view the application.
 
 > **Note**: The application will automatically create the SQLite database in the `data/` directory on first run.
 
@@ -63,15 +49,15 @@ npm run dev
 
 ### PDF Bank Statements
 
-#### BancoPosta Format (NEW)
-- **Auto-detected** format for BancoPosta statements
+#### Modern Bank Statement Format
+- **Auto-detected** format for major Italian banks
 - Extracts IBAN, account holder, and statement date
-- Parses "LISTA MOVIMENTI" table with full transaction details
-- Supports balance extraction (SALDO CONTABILE and SALDO DISPONIBILE)
+- Parses transaction tables with comprehensive details
+- Supports balance extraction and account information
 
 #### Legacy PDF Format
-- Supports traditional Italian bank statement formats
-- Dual-date parsing (Data Contabile, Data Valuta)
+- Supports traditional bank statement formats
+- Dual-date parsing (accounting date, value date)
 - Flexible text-based transaction extraction
 
 ### Excel/CSV Files
@@ -95,8 +81,8 @@ npm run dev
 ### Parser Architecture
 The application uses a plugin-style parser architecture:
 
-1. **Format Detection**: Automatic format detection via `formatDetectors.ts`
-2. **Specialized Parsers**: Format-specific parsers (e.g., `bancoPostaParser.ts`)
+1. **Format Detection**: Automatic format detection via intelligent analyzers
+2. **Specialized Parsers**: Format-specific parsers for different bank statement types
 3. **Fallback Support**: Legacy parser for unsupported formats
 4. **Unified Output**: All parsers produce standard Transaction objects
 
@@ -104,10 +90,14 @@ The application uses a plugin-style parser architecture:
 
 ### Environment Variables
 
+All environment variables are **optional**. The application works without any configuration.
+
 | Variable | Description | Required | Default |
 |----------|-------------|----------|----------|
-| `NEXT_PUBLIC_OPENROUTER_API_KEY` | OpenRouter API key for AI categorization and analysis | Yes | - |
+| `NEXT_PUBLIC_OPENROUTER_API_KEY` | OpenRouter API key for AI categorization and analysis | No | (AI features disabled) |
 | `SHOW_AMOUNTS` | Password for showing real amounts instead of obfuscated values | No | (obfuscated by default) |
+
+> **Note**: To use AI features, create a `.env.local` file in the root directory and add your OpenRouter API key.
 
 ### Database Schema
 
@@ -194,4 +184,6 @@ For detailed version history, see [CHANGELOG.md](CHANGELOG.md)
 
 ## 📝 License
 
-This project is open source and available for personal use.
+This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
+
+Copyright 2025 Marco Cricchio
